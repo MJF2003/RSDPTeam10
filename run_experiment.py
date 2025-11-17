@@ -5,6 +5,8 @@ from pathlib import Path
 
 import yaml  # pip install pyyaml
 
+# uv run experiment_runner.py distances d=0.1 colour='white'
+
 
 def coerce_value(raw: str):
     """Heuristic type conversion: int -> float -> bool -> None -> str."""
