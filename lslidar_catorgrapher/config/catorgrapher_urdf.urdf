@@ -1,0 +1,36 @@
+<?xml version="1.0" ?>
+<robot name="laser_robot">
+
+  <!-- 基座坐标系 -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.2 0.2 0.1"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0 0 0.8 0.5"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- 激光雷达坐标系 - 与您的frame_id一致 -->
+  <link name="laser">
+    <visual>
+      <geometry>
+        <cylinder length="0.08" radius="1.2"/>
+      </geometry>
+      <material name="red">
+        <color rgba="1 0 0 0.8"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- 激光雷达与基座的连接 -->
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser"/>
+    <!-- 雷达安装在基座中心上方 -->
+    <origin xyz="0 0 1" rpy="0 0 0"/>
+  </joint>
+
+</robot>
