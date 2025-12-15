@@ -1,2 +1,3 @@
-# An array of Block poses after smoothing
-BlockPoseSmoothed[] block_poses
+# A simple array which contains all smoothed block observations. At most should have 
+# three elements corresponding to the three blocks
+BlockPoseSmoothed[]  blocks

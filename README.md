@@ -2,7 +2,7 @@
 AERO62520 Robotic Systems Design Project Team 10
 
 ## Introduction
-This repository contains ROS2 code used in the RSDP Leo Rover project. This code is organised into ROS2 packages and nodes, with a structure defined in TKTKT.
+This repository contains ROS2 code used in the RSDP Leo Rover project. This code is organised into ROS2 packages and nodes which execute separate logic. Most code currently lives in branches as teammates work on individual task solving. This will be merged into `main` as packages are completed and integrated.
 
 ## Contributing
 This repo follows standard software development best practice. All commits should be made on branches, and merged into `main` via pull requests. For more details on using Git, see the internal team Guide to Git. The intention is that the `main` branch remains clean; this is where the code run on the main Rover will be contained, so it is paramount that it stays relatively clean.
