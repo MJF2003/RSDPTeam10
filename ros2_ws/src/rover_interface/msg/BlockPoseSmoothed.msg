@@ -2,7 +2,7 @@
 uint8 id
 
 # Smoothed position of the block from multiple observations 
-geometry_msgs/msg/PointStamped position
+geometry_msgs/PointStamped position
 
 # Block features
 BlockShape shape
