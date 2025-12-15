@@ -8,7 +8,36 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
+#### ROS2 Interface Directives ####
+set(interface_files
+  # Messages
+  "msg/BinPoseObservation.msg"
+  "msg/BinPoseSmoothedArray.msg"
+  "msg/BinPoseSmoothed.msg"
+  "msg/BlockBinColor.msg"
+  "msg/BlockPoseObservation.msg"
+  "msg/BlockPoseSmoothedArray.msg"
+  "msg/BlockPoseSmoothed.msg"
+  "msg/BlockShape.msg"
+  "msg/BoundingBox.msg"
+  "msg/PlatformPoseObservation.msg"
+  "msg/PlatformPoseSmoothedArray.msg"
+  "msg/PlatformPoseSmoothed.msg"
+)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${interface_files}
+  DEPENDENCIES
+  geometry_msgs
+
+)
+
+ament_export_dependencies(
+  rosidl_default_runtime
+)
+#### ROS2 Interface Directives [END] ####
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
