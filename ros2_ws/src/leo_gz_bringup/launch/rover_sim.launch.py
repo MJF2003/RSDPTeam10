@@ -72,6 +72,15 @@ def generate_launch_description():
         arguments=[
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
             # Block, bin, platform positions for the vision stub module
+            "/model/block_red_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/block_blue_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/block_yellow_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/bin_red_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/bin_blue_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/bin_yellow_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/platform_red/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/platform_blue/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/platform_yellow/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
         ],
         parameters=[
             {

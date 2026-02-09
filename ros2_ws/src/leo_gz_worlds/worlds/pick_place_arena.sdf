@@ -158,18 +158,18 @@
     </model>
 
     <!-- <include> -->
-    <!--   <uri>../models/surrogate_rover</uri> -->
+    <!--   <uri>model://surrogate_rover</uri> -->
     <!--   <name>surrogate_rover</name> -->
     <!--   <pose>0 0 0 0 0 0</pose> -->
     <!-- </include> -->
 
     <include>
-      <uri>../models/bin_red</uri>
+      <uri>model://bin_red</uri>
       <name>bin_red_1</name>
       <pose>-1.2 -0.55 0 0 0 0</pose>
     </include>
     <include>
-      <uri>../models/bin_blue</uri>
+      <uri>model://bin_blue</uri>
       <name>bin_blue_1</name>
       <pose>-1.2 0.0 0 0 0 0</pose>
     </include>
