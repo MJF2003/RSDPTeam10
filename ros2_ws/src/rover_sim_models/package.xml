@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>rover_sim_gazebo</name>
+  <name>rover_sim_models</name>
   <version>0.1.0</version>
   <description>Gazebo worlds and models for rover integration testing.</description>
   <maintainer email="alexinch96@yahoo.com">laptop20</maintainer>
