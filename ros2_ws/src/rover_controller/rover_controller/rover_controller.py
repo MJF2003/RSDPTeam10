@@ -7,6 +7,7 @@ from enum import Enum, auto
 
 import rclpy
 from rclpy.node import Node
+
 from rover_interface.msg import (
     BlockBinColor,
     BlockPoseSmoothed,
