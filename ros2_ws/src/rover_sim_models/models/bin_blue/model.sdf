@@ -23,5 +23,12 @@
         </material>
       </visual>
     </link>
+    <plugin
+      filename="libgz-sim-pose-publisher-system.so"
+      name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>true</publish_link_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <update_frequency>100</update_frequency>
+    </plugin>
   </model>
 </sdf>
