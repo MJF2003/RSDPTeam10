@@ -1,5 +1,5 @@
 # An enum defining the different block colours, which are shared between blocks and bins. 
-uint8 colour 
+uint8 color
 
 # enum definitions. These let us call the values in the following
 # semantically useful way: colour = BlockBinColour.BLUE
