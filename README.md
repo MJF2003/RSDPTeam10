@@ -1,6 +1,8 @@
 # RSDPTeam10
 AERO62520 Robotic Systems Design Project Team 10
 
+(THIS IS NOT FULL OF THE CODE, WEIGHT FILES ARE IN NUC)
+
 Test using Realsense:
 (in venv)
 
