@@ -20,6 +20,7 @@ from rover_interface.msg import (
 class VisionStub(Node):
     def __init__(self):
         super().__init__("vision_stub")
+        self.get_logger().info("Launching vision stub")
         self.add_gaussian_noise = bool(
             self.declare_parameter("add_gaussian_noise", True).value
         )
@@ -41,6 +42,9 @@ class VisionStub(Node):
         self.subs = []
         # Build all the pubs and subs
         for block_str, color in blockbin_colors.items():
+            self.get_logger().info(
+                f"Creating block subscription to /model/block_{block_str}_1/pose"
+            )
             self.subs.append(
                 self.create_subscription(
                     msg_type=PoseArray,
@@ -56,6 +60,9 @@ class VisionStub(Node):
         )
 
         for bin_str, color in blockbin_colors.items():
+            self.get_logger().info(
+                f"Creating bin subscription to /model/bin_{bin_str}_1/pose"
+            )
             self.subs.append(
                 self.create_subscription(
                     msg_type=PoseArray,
@@ -81,15 +88,9 @@ class VisionStub(Node):
 
         # All the objects have their own topics, so
         # just index into the first element in the array
-        obs.position.point.x = self.apply_noise(  # type: ignore
-            msg.poses[0].position.x
-        )
-        obs.position.point.y = self.apply_noise(  # type: ignore
-            msg.poses[0].position.y
-        )
-        obs.position.point.z = self.apply_noise(  # type: ignore
-            msg.poses[0].position.z
-        )
+        obs.position.point.x = self.apply_noise(msg.poses[0].position.x)  # type: ignore
+        obs.position.point.y = self.apply_noise(msg.poses[0].position.y)  # type: ignore
+        obs.position.point.z = self.apply_noise(msg.poses[0].position.z)  # type: ignore
 
         return obs
 
