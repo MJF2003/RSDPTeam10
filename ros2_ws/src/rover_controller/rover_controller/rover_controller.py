@@ -48,26 +48,40 @@ class Phase:
 class ControllerNode(Node):
     def __init__(self):
         super().__init__("controller_node")
-        self.state = Phase.Explore.PROPOSE_NAV_POSE
+        self.state = Phase.StartUp.WAIT
+        self.get_logger().info(f"Launching controller node with state {self.state=}")
 
+        block_topic = "/controller/block_poses"
         # Observation Management
         self.obs_sub = self.create_subscription(
             BlockPoseSmoothedArray,
-            topic="/controller/block_poses",
+            topic=block_topic,
             callback=self.block_pose_callback,
             qos_profile=1,
         )
+        self.get_logger().info(f"Starting subscription to {block_topic}")
         self.blocks = []
-        self.bins = [1, 2, 3]  # dummy!!!
+        self.bins = [1, 2, 3]  # TODO(alex) - just a dummy variable!!!
         self.target_block: None | BlockPoseSmoothed = None
 
         # Action client for navigation
+        action_topic = "/navigate_to_block"
+        self.get_logger().info(
+            f"Connecting to navigation action server {action_topic=}"
+        )
         self.nav_action_client = ActionClient(
             self,
             NavigateToBlock,
-            "/navigate_to_block",
+            action_topic,
         )
         self.nav_goal_in_flight = False
+
+        # Spin main controller loop
+        controller_period = 0.1
+        self.main_loop_timer = self.create_timer(controller_period, callback=self.loop)
+        self.get_logger().info(
+            f"Setting up main loop timer with frequency {1 / controller_period:.1f}Hz"
+        )
 
     def loop(self):
         match self.state:
@@ -79,7 +93,6 @@ class ControllerNode(Node):
                 self.explore()
             case Phase.ApproachBlock.EXECUTE_NAV:
                 self.navigate_to_block(self.target_block)
-                pass
 
     def wait(self):
         self.get_logger().info("I am waiting :)")
@@ -109,12 +122,17 @@ class ControllerNode(Node):
         # Tbd whether these happen in the controller or the navigation node
         # ideally should be in nav node
         self.get_logger().info("Beginning exploration!")
-        # TODO: add action client for exploration action
-        self.state = Phase.ApproachBlock.PROPOSE_NAV_POSE
+
+        # First - if we have a target block, move to the Approach Phase
+        if self.target_block is not None:
+            self.state = Phase.ApproachBlock.EXECUTE_NAV
+            return
+        # Otherwise - begin executing an ExploreMove
+        return
 
     def block_pose_callback(self, msg: BlockPoseSmoothedArray):
         # don't pay attention if we're doing a grasp or deposition
-        if (self.state in Phase.GraspBlock) or (self.state in Phase.DepositBlock) or ():
+        if (self.state in Phase.GraspBlock) or (self.state in Phase.DepositBlock):
             return
         # parse and store block poses
         self.blocks = msg.blocks
