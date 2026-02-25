@@ -1,5 +1,5 @@
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Changelog for package leo_gz_bringup
+Changelog for package rover_gz_bringup
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 2.0.2 (2025-04-11)
@@ -23,7 +23,7 @@ Changelog for package leo_gz_bringup
 
 1.0.0 (2023-11-08)
 ------------------
-* Add ament_black test to leo_gz_bringup (`#4 <https://github.com/LeoRover/leo_simulator-ros2/issues/4>`_)
+* Add ament_black test to rover_gz_bringup (`#4 <https://github.com/LeoRover/leo_simulator-ros2/issues/4>`_)
 * Revert default world to empty world
 * Fix wrong import and code formatting
 * Add robot_ns argument to leo_gz.launch

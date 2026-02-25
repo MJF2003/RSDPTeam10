@@ -22,9 +22,7 @@
 import os
 
 from ament_index_python.packages import get_package_share_directory
-
-from launch.actions import DeclareLaunchArgument
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description import LaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -34,12 +32,14 @@ from launch_ros.actions import Node
 def generate_launch_description():
     # Setup project paths
     pkg_ros_gz_sim = get_package_share_directory("ros_gz_sim")
-    pkg_project_gazebo = get_package_share_directory("leo_gz_bringup")
+    pkg_project_gazebo = get_package_share_directory("rover_gz_bringup")
     pkg_project_worlds = get_package_share_directory("leo_gz_worlds")
 
     sim_world = DeclareLaunchArgument(
         "sim_world",
-        default_value=os.path.join(pkg_project_worlds, "worlds", "leo_empty.sdf"),
+        default_value=os.path.join(
+            pkg_project_worlds, "worlds", "pick_place_arena.sdf"
+        ),
         description="Path to the Gazebo world file",
     )
 
@@ -71,6 +71,16 @@ def generate_launch_description():
         name="clock_bridge",
         arguments=[
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+            # Block, bin, platform positions for the vision stub module
+            "/model/block_red_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/block_blue_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/block_yellow_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/bin_red_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/bin_blue_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/bin_yellow_1/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/platform_red/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/platform_blue/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/platform_yellow/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
         ],
         parameters=[
             {
