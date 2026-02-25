@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'vision_stub = rover_sim_stubs.vision_stub:main'
+            'vision_stub = rover_sim_stubs.vision_stub:main',
+            'navigation_stub = rover_sim_stubs.navigation_stub:main',
         ],
     },
 )
