@@ -15,11 +15,17 @@ from rover_interface.msg import (
 class AggregateObservations(Node):
     def __init__(self):
         super().__init__("aggregate_observations")
+        self.get_logger().info("Launching observation smoothing node")
 
-        # Fix: Access .value
         self.block_dist_threshold_m = self.declare_parameter(
-            "block_dist_threshold_m", 0.1
+            "block_dist_threshold_m", 0.5
         ).value
+        self.get_logger().info(
+            f"Setting disambiguation distance threshold to {self.block_dist_threshold_m:.2f}m"
+        )
+
+        # TODO: set debug to false by default
+        self.debug = self.declare_parameter("debug", True).value
 
         self.sub = self.create_subscription(
             BlockPoseObservation,
@@ -31,13 +37,13 @@ class AggregateObservations(Node):
         self.block_poses: np.ndarray | None = None
         self.block_colors: list[BlockBinColor] = []
 
+        self.pub_topic = "/controller/block_poses"
         self.pub = self.create_publisher(
             msg_type=BlockPoseSmoothedArray,
-            topic="/controller/block_poses",
+            topic=self.pub_topic,
             qos_profile=1,
         )
 
-        # Fix: Remove partial to avoid stale reference to None
         self.create_timer(0.1, self.publish_smoothed_array)
 
     def compare_blocks(self, pos: np.ndarray) -> tuple[int, bool]:
@@ -49,6 +55,7 @@ class AggregateObservations(Node):
 
     def publish_smoothed_array(self):
         if self.block_poses is None:
+            self.get_logger().info("No known block positions to publish")
             return
 
         msg = BlockPoseSmoothedArray()
@@ -70,16 +77,15 @@ class AggregateObservations(Node):
             block.color.color = BlockBinColor.RED
             block.collected = False
 
-            msg.blocks.append(block)
+            msg.blocks.append(block)  # type:ignore
 
         self.pub.publish(msg=msg)
 
-    @staticmethod
-    def update_pose_estimate(current: np.ndarray, new: np.ndarray):
-        return 0.05 * current + 0.95 * new
+    def update_pose_estimate(self, current: np.ndarray, new: np.ndarray):
+        # TODO: test different smoothing approaches
+        return 0.95 * current + 0.05 * new
 
     def observe_block(self, msg: BlockPoseObservation):
-        # Fix: Use (3,) to avoid (1,3) broadcasting issues later
         pos = np.array(
             [msg.position.point.x, msg.position.point.y, msg.position.point.z]
         )
