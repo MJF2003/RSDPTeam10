@@ -9,6 +9,7 @@ from rclpy.node import Node
 from rover_interface.action import NavigateToPos
 from rover_interface.msg import (
     BinPoseSmoothed,
+    BinPoseSmoothedArray,
     BlockBinColor,
     BlockPoseObservation,
     BlockPoseSmoothed,
@@ -45,6 +46,18 @@ class Phase:
         TERMINATE = auto()
 
 
+def color_to_str(color: BlockBinColor | int) -> str:
+    color_value = int(color.color) if isinstance(color, BlockBinColor) else int(color)
+    return {
+        BlockBinColor.BLUE: "BLUE",
+        BlockBinColor.RED: "RED",
+        BlockBinColor.YELLOW: "YELLOW",
+        BlockBinColor.PURPLE: "PURPLE",
+        BlockBinColor.PINK: "PINK",
+        BlockBinColor.GREEN: "GREEN",
+    }.get(color_value, f"UNKNOWN({color_value})")
+
+
 class ControllerNode(Node):
     def __init__(self):
         super().__init__("controller_node")
@@ -60,6 +73,16 @@ class ControllerNode(Node):
             qos_profile=1,
         )
         self.get_logger().info(f"Starting subscription to {block_topic}")
+
+        bin_topic = "/controller/bin_poses"
+        self.bin_obs_sub = self.create_subscription(
+            BinPoseSmoothedArray,
+            topic=bin_topic,
+            callback=self.bin_pose_callback,
+            qos_profile=1,
+        )
+        self.get_logger().info(f"Starting subscription to {bin_topic}")
+
         self.blocks: list[BlockPoseSmoothed] = []
         self.collected: set[int] = set()  # stores ids of collected blocks
         self.bins: list[BinPoseSmoothed] = []  # TODO(alex) - just a dummy variable!!!
@@ -97,8 +120,9 @@ class ControllerNode(Node):
                 self.navigate_to_pose(self.target_block)
             case Phase.GraspBlock.ATTEMPT_GRASP:
                 self.grasp_block(self.target_block)
+            case Phase.ApproachBin.PROPOSE_NAV_POSE:
+                self.select_target_bin(self.target_block)
             case Phase.ApproachBin.EXECUTE_NAV:
-                # TODO(Alex) is it ok to just call navigate to block again? I think so
                 self.navigate_to_pose(self.target_bin)
 
     def wait(self):
@@ -149,6 +173,13 @@ class ControllerNode(Node):
         for block in self.blocks:
             if block.id not in self.collected:
                 self.target_block = block
+
+    def bin_pose_callback(self, msg: BinPoseSmoothedArray):
+        # don't pay attention if we're doing a grasp or deposition
+        if (self.state in Phase.GraspBlock) or (self.state in Phase.DepositBlock):
+            return
+        # parse and store bin poses
+        self.bins = msg.bins  # type: ignore
 
     # ------------------------ NAVIGATION -----------------------------------------
     def navigate_to_pose(
@@ -205,7 +236,20 @@ class ControllerNode(Node):
         result = future.result().result
         if result.success:
             status = "SUCCESS"
-            self.state = Phase.GraspBlock.ATTEMPT_GRASP
+            if self.state in Phase.ApproachBlock:
+                self.get_logger().info(
+                    f"Succesful navigation. Transitioning to phase {Phase.GraspBlock.ATTEMPT_GRASP}"
+                )
+                self.state = Phase.GraspBlock.ATTEMPT_GRASP
+            elif self.state in Phase.ApproachBin:
+                self.get_logger().info(
+                    f"Succesful navigation. Transitioning to phase {Phase.GraspBlock.ATTEMPT_GRASP}"
+                )
+                self.state = Phase.Explore.EXPLORE
+            else:
+                self.get_logger().warn(
+                    f"Unexpected state at end of navigation: {self.state=}"
+                )
         # TODO(Alex): what do we do if the navigation failed?
         status = "SUCCESS" if result.success else "FAILURE"
         self.get_logger().info(
@@ -223,15 +267,35 @@ class ControllerNode(Node):
             self.state = Phase.Explore.EXPLORE
             return
 
-        self.get_logger().info(f"Grasping block with color: {target_block.color}")
-
+        # TODO(Alex): This block targeting logic should maybe not be in this func
         self.collected.add(target_block.id)
+        self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
+
+    def select_target_bin(self, target_block: BlockPoseSmoothed | None):
+        # TODO(Alex): Remove this assert
+        assert target_block is not None
         color = target_block.color
+        color_value = int(color.color)
+        self.get_logger().info(f"Grasping block with color: {color_to_str(color)}")
         for bin in self.bins:
-            if bin.color != target_block.color:
+            if int(bin.color.color) != color_value:
+                self.get_logger().info(
+                    f"Ignoring bin {color_to_str(bin.color)} for grasp"
+                )
                 continue
             self.target_bin = bin
-            self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
+            self.state = Phase.ApproachBin.EXECUTE_NAV
+            self.get_logger().info(f"Succesfully grasped {color_to_str(color)} block")
+            return
+        self.get_logger().info(
+            f"No matching bin known for block color {color_to_str(color)}"
+        )
+
+    def deposit_block(self):
+        self.target_block = None
+        self.target_bin = None
+        self.get_logger().info("Depositing block")
+        self.state = Phase.Explore.EXPLORE
 
 
 def main():
