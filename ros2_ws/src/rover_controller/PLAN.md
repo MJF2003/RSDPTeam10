@@ -22,6 +22,7 @@
     3. Current estimates of bin positions 
     4. Current phase of controller 
 9. Cut back on some of the spammy logging out of the controller nodes
+10. The controller ignores block updates during some moves, but that doesn't stop the smoothing node from updating them - which the controller will then ingest the next time it moves to a new state. May or may not be a problem (in principle the block will be deposited by the time the controller accepts new observations)
 
 
 # TODOs in the code 

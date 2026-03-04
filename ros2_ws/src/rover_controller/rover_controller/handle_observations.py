@@ -4,6 +4,9 @@ from geometry_msgs.msg import Point, PointStamped
 from rclpy.node import Node
 
 from rover_interface.msg import (
+    BinPoseObservation,
+    BinPoseSmoothed,
+    BinPoseSmoothedArray,
     BlockBinColor,
     BlockPoseObservation,
     BlockPoseSmoothed,
@@ -21,13 +24,21 @@ class AggregateObservations(Node):
             "block_dist_threshold_m", 0.5
         ).value
         self.get_logger().info(
-            f"Setting disambiguation distance threshold to {self.block_dist_threshold_m:.2f}m"
+            f"Setting block disambiguation distance threshold to "
+            f"{self.block_dist_threshold_m:.2f}m"
+        )
+        self.bin_dist_threshold_m = self.declare_parameter(
+            "bin_dist_threshold_m", 0.5
+        ).value
+        self.get_logger().info(
+            f"Setting bin disambiguation distance threshold to "
+            f"{self.bin_dist_threshold_m:.2f}m"
         )
 
-        # TODO: set debug to false by default
-        self.debug = self.declare_parameter("debug", True).value
+        self.debug = self.declare_parameter("debug", False).value
 
-        self.sub = self.create_subscription(
+        # -- BLOCK SETUP ------------------------------------------------------
+        self.block_sub = self.create_subscription(
             BlockPoseObservation,
             topic="/cv/block_poses",
             callback=self.observe_block,
@@ -37,23 +48,43 @@ class AggregateObservations(Node):
         self.block_poses: np.ndarray | None = None
         self.block_colors: list[BlockBinColor] = []
 
-        self.pub_topic = "/controller/block_poses"
-        self.pub = self.create_publisher(
+        self.block_pub_topic = "/controller/block_poses"
+        self.block_pub = self.create_publisher(
             msg_type=BlockPoseSmoothedArray,
-            topic=self.pub_topic,
+            topic=self.block_pub_topic,
             qos_profile=1,
         )
 
-        self.create_timer(0.1, self.publish_smoothed_array)
+        self.create_timer(0.1, self.publish_smoothed_block_array)
+
+        # -- BIN SETUP --------------------------------------------------------
+        self.bin_sub = self.create_subscription(
+            msg_type=BinPoseObservation,
+            topic="/cv/bin_poses",
+            callback=self.observe_bin,
+            qos_profile=1,
+        )
+        self.bin_poses: np.ndarray | None = None
+        self.bin_colors: list[BlockBinColor] = []
+
+        self.bin_pub_topic = "/controller/bin_poses"
+        self.bin_pub = self.create_publisher(
+            msg_type=BinPoseSmoothedArray,
+            topic=self.bin_pub_topic,
+            qos_profile=1,
+        )
+
+        self.create_timer(0.1, self.publish_smoothed_bin_array)
+
+    # --------------------- BLOCKS -------------------------------------------------
 
     def compare_blocks(self, pos: np.ndarray) -> tuple[int, bool]:
         dists = np.linalg.norm(pos - self.block_poses, axis=-1)
         if dists.min() < self.block_dist_threshold_m:
-            # Fix: Return argmin (closest), not argmax (furthest)
             return dists.argmin(), False
         return len(dists), True
 
-    def publish_smoothed_array(self):
+    def publish_smoothed_block_array(self):
         if self.block_poses is None:
             self.get_logger().info("No known block positions to publish")
             return
@@ -78,7 +109,7 @@ class AggregateObservations(Node):
 
             msg.blocks.append(block)  # type:ignore
 
-        self.pub.publish(msg=msg)
+        self.block_pub.publish(msg=msg)
 
     def update_pose_estimate(self, current: np.ndarray, new: np.ndarray):
         # TODO: test different smoothing approaches
@@ -103,6 +134,53 @@ class AggregateObservations(Node):
             self.block_poses[idx] = self.update_pose_estimate(
                 self.block_poses[idx], pos
             )
+
+    # --------------------- BINS -------------------------------------------------
+    def compare_bins(self, pos: np.ndarray) -> tuple[int, bool]:
+        dists = np.linalg.norm(pos - self.bin_poses, axis=-1)
+        if dists.min() < self.bin_dist_threshold_m:
+            return dists.argmin(), False
+        return len(dists), True
+
+    def publish_smoothed_bin_array(self):
+        if self.bin_poses is None:
+            self.get_logger().info("No known bin positions to publish")
+            return
+
+        msg = BinPoseSmoothedArray()
+        for i in range(len(self.bin_poses)):
+            bin_pose = BinPoseSmoothed()
+
+            pose = self.bin_poses[i]
+            bin_pose.position = PointStamped()
+            bin_pose.position.header.frame_id = "odom"
+            bin_pose.position.header.stamp = self.get_clock().now().to_msg()
+            bin_pose.position.point = Point(x=pose[0], y=pose[1], z=pose[2])
+
+            bin_pose.color = BlockBinColor()
+            bin_pose.color.color = self.bin_colors[i].color
+
+            msg.bins.append(bin_pose)  # type:ignore
+
+        self.bin_pub.publish(msg=msg)
+
+    def observe_bin(self, msg: BinPoseObservation):
+        pos = np.array(
+            [msg.position.point.x, msg.position.point.y, msg.position.point.z]
+        )
+
+        if self.bin_poses is None:
+            self.bin_poses = pos[np.newaxis, :]  # Shape (1, 3)
+            self.bin_colors.append(msg.color)
+            return
+
+        idx, is_distinct = self.compare_bins(pos)
+
+        if is_distinct:
+            self.bin_poses = np.vstack([self.bin_poses, pos])
+            self.bin_colors.append(msg.color)
+        else:
+            self.bin_poses[idx] = self.update_pose_estimate(self.bin_poses[idx], pos)
 
 
 def main():
