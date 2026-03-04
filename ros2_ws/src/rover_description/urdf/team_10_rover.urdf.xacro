@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<robot name="team_10_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ===================== -->
+  <!-- Arguments / Parameters -->
+  <!-- ===================== -->
+
+  <xacro:arg name="arm_xyz" default="0.0880 0 0.0585"/>
+  <xacro:arg name="arm_rpy" default="0 0 0"/>
+
+  <xacro:arg name="lidar_xyz" default="0.0700 0 0.0380"/>
+  <xacro:arg name="lidar_rpy" default="0 0 0"/>
+
+  <xacro:arg name="camera_xyz" default="0.1746 0 0.0906"/>
+  <xacro:arg name="camera_rpy" default="0 0.4712 0"/>
+
+  <!-- ===================== -->
+  <!-- Include LeoRover      -->
+  <!-- ===================== -->
+
+  <xacro:arg name="fixed" default="false"/>
+  <xacro:arg name="robot_ns" default=""/>
+  <xacro:arg name="mecanum_wheels" default="false"/>
+
+  <xacro:include filename="$(find leo_description)/urdf/macros.xacro"/>
+
+  <xacro:leo_sim robot_ns="$(arg robot_ns)"
+                 fixed="$(arg fixed)"
+                 mecanum_wheels="$(arg mecanum_wheels)"/>
+
+  <!-- ===================== -->
+  <!-- Include myCobot280pi  -->
+  <!-- ===================== -->
+
+  <xacro:include filename="$(find rover_description)/urdf/assemblies/mycobot_280_pi_custom.urdf.xacro"/>
+  <xacro:mycobot_280_pi_custom prefix="arm_" />
+
+  <!-- ===================== -->
+  <!-- Custom Links (Sensors) -->
+  <!-- ===================== -->
+
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/lidar.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <link name="depth_camera_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://rover_description/meshes/camera.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- ===================== -->
+  <!-- Fixed Joints          -->
+  <!-- ===================== -->
+
+  <!-- Attach manipulator to LeoRover -->
+  <joint name="arm_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_joint1"/>
+    <origin xyz="$(arg arm_xyz)" rpy="$(arg arm_rpy)"/>
+  </joint>
+
+  <!-- Attach LIDAR -->
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="$(arg lidar_xyz)" rpy="$(arg lidar_rpy)"/>
+  </joint>
+
+  <!-- Attach Camera -->
+  <joint name="depth_camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="depth_camera_link"/>
+    <origin xyz="$(arg camera_xyz)" rpy="$(arg camera_rpy)"/>
+  </joint>
+
+</robot>
+
