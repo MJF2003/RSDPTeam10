@@ -12,6 +12,7 @@ find_package(xacro REQUIRED)
 find_package(robot_state_publisher REQUIRED)
 find_package(rviz2 REQUIRED)
 find_package(leo_description REQUIRED)
+find_package(urdf_tutorial REQUIRED)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -26,7 +27,7 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  DIRECTORY urdf meshes 
+  DIRECTORY urdf meshes launch
   DESTINATION share/${PROJECT_NAME}
 )
 
