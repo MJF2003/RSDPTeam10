@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="block_yellow">
+    <static>false</static>
+    <allow_auto_disable>false</allow_auto_disable>
+    <link name="link">
+      <pose>0 0 0.03 0 0 0</pose>
+      <inertial>
+        <mass>0.25</mass>
+        <inertia>
+          <ixx>0.00015</ixx>
+          <iyy>0.00015</iyy>
+          <izz>0.00015</izz>
+          <ixy>0.0</ixy>
+          <ixz>0.0</ixz>
+          <iyz>0.0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>0.06 0.06 0.06</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.06 0.06 0.06</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.8 0.8 0.1 1</ambient>
+          <diffuse>0.9 0.85 0.15 1</diffuse>
+        </material>
+      </visual>
+    </link>
+    <plugin
+      filename="libgz-sim-pose-publisher-system.so"
+      name="gz::sim::systems::PosePublisher">
+      <publish_link_pose>false</publish_link_pose>
+      <publish_model_pose>true</publish_model_pose>
+      <use_pose_vector_msg>true</use_pose_vector_msg>
+      <update_frequency>10</update_frequency>
+    </plugin>
+  </model>
+</sdf>

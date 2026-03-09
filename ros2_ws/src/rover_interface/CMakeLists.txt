@@ -7,8 +7,10 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(action_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(unique_identifier_msgs REQUIRED)
 
 #### ROS2 Interface Directives ####
 set(interface_files
@@ -25,12 +27,16 @@ set(interface_files
   "msg/PlatformPoseObservation.msg"
   "msg/PlatformPoseSmoothedArray.msg"
   "msg/PlatformPoseSmoothed.msg"
+  # Actions
+  "action/NavigateToPos.action"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${interface_files}
   DEPENDENCIES
+  action_msgs
   geometry_msgs
+  unique_identifier_msgs
 
 )
 

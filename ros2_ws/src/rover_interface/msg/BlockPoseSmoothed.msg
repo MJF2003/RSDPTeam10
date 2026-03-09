@@ -7,8 +7,3 @@ geometry_msgs/PointStamped position
 # Block features
 BlockShape shape
 BlockBinColor color
-
-# State for tracking whether a given block has been successfully collected
-bool state 
-bool COLLECTED = true
-bool NOT_COLLECTED = false

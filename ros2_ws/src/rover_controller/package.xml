@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rover_controller</name>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="alexinch96@yahoo.com">laptop20</maintainer>
+  <license>TODO: License declaration</license>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <exec_depend>python-numpy</exec_depend>
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>rclpy</depend>
+  <depend>rover_gz_bringup</depend>
+  <depend>rover_interface</depend>
+  <depend>rover_sim_stubs</depend>
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
