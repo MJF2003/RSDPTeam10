@@ -1,5 +1,3 @@
-# TODO: implement main controller - it needs to handle
-# transitions ketween states in the main
 from enum import Enum, auto
 
 import rclpy
@@ -11,7 +9,6 @@ from rover_interface.msg import (
     BinPoseSmoothed,
     BinPoseSmoothedArray,
     BlockBinColor,
-    BlockPoseObservation,
     BlockPoseSmoothed,
     BlockPoseSmoothedArray,
 )
@@ -26,13 +23,13 @@ class Phase:
         EXPLORE = auto()
 
     class ApproachBlock(Enum):
-        PROPOSE_NAV_POSE = auto()
+        PROPOSE_NAV_POSE = auto()  # TODO(Alex): Implement this logic
         EXECUTE_NAV = auto()
 
     class GraspBlock(Enum):
         ATTEMPT_GRASP = auto()
         RECOMPUTE_POSITION = auto()
-        TRANSITION_TO_CARRY = auto()
+        TRANSITION_TO_CARRY = auto()  # TODO(Alex): Can the manipulator node do this?
 
     class ApproachBin(Enum):
         PROPOSE_NAV_POSE = auto()
@@ -40,13 +37,14 @@ class Phase:
 
     class DepositBlock(Enum):
         ATTEMPT_DEPOSIT = auto()
-        REGRASP_BLOCK = auto()
+        REGRASP_BLOCK = auto()  # TODO(Alex): TBD whether we need this
 
     class PostDeposit(Enum):
         TERMINATE = auto()
 
 
 def color_to_str(color: BlockBinColor | int) -> str:
+    "Converts BlockBinColor enums to strings"
     color_value = int(color.color) if isinstance(color, BlockBinColor) else int(color)
     return {
         BlockBinColor.BLUE: "BLUE",
@@ -85,7 +83,7 @@ class ControllerNode(Node):
 
         self.blocks: list[BlockPoseSmoothed] = []
         self.collected: set[int] = set()  # stores ids of collected blocks
-        self.bins: list[BinPoseSmoothed] = []  # TODO(alex) - just a dummy variable!!!
+        self.bins: list[BinPoseSmoothed] = []
         self.target_block: None | BlockPoseSmoothed = None
         self.target_bin: None | BinPoseSmoothed = None
 
@@ -108,7 +106,12 @@ class ControllerNode(Node):
             f"Setting up main loop timer with frequency {1 / controller_period:.1f}Hz"
         )
 
+        self.loop_count = 0  # var for controlling frequency of state logging
+
     def loop(self):
+        self.loop_count += 1
+        if self.loop_count % 50 == 0:  # logs generic status every 5s
+            self.log_status()
         match self.state:
             case Phase.StartUp.WAIT:
                 self.wait()
@@ -124,18 +127,35 @@ class ControllerNode(Node):
                 self.select_target_bin(self.target_block)
             case Phase.ApproachBin.EXECUTE_NAV:
                 self.navigate_to_pose(self.target_bin)
+            case Phase.DepositBlock.ATTEMPT_DEPOSIT:
+                self.deposit_block()
+            case Phase.PostDeposit.TERMINATE:
+                pass
+            case _:
+                self.get_logger().warn(f"Unexpected state {self.state=}")
+
+    def log_status(self):
+        self.get_logger().info(
+            f"Current phase: {self.state}\nKnown blocks: {self.blocks}\nKnown bins: {self.bins}"
+        )
 
     def wait(self):
-        self.get_logger().info("I am waiting :)")
-        # TODO: how do you check how many other nodes are up? expected
-        # number of pubs/subs?
-        # TODO: add a proper check here
-        all_nodes_ready = True
-        if all_nodes_ready:
-            self.get_logger().info("All nodes ready, progressing to bin observation")
-            self.state = Phase.StartUp.OBSERVE_BINS
-        else:
-            self.get_logger().warning("Some nodes still not ready")
+        "Waits until all expected topics and action servers are ready"
+        for sub in self.subscriptions:
+            if self.count_publishers(sub.topic_name) == 0:
+                self.get_logger().info(f"Waiting for publisher on {sub.topic_name}...")
+                return
+
+        for attr in self.__dict__.values():
+            if isinstance(attr, ActionClient):
+                if not attr.server_is_ready():
+                    self.get_logger().info(
+                        f"Waiting for action server {attr._action_name}..."
+                    )
+                    return
+
+        self.get_logger().info("All interfaces ready, progressing to bin observation.")
+        self.state = Phase.StartUp.OBSERVE_BINS
 
     def observe_bins(self):
         self.get_logger().info("I am observing O.O")
@@ -150,7 +170,6 @@ class ControllerNode(Node):
             self.get_logger().warning("DIDN'T SEE ALL BINS!")
 
     def explore(self):
-        ...
         # Tbd whether these happen in the controller or the navigation node
         # ideally should be in nav node
         self.get_logger().info("Beginning exploration!")
@@ -171,7 +190,10 @@ class ControllerNode(Node):
         self.blocks = msg.blocks  # type: ignore
         # if we have any uncollected blocks - set it as the target
         for block in self.blocks:
-            if block.id not in self.collected:
+            if (block.id not in self.collected) and (self.target_block is None):
+                self.get_logger().info(
+                    f"Targeting {color_to_str(block.color)} block, ignoring collected blocks {self.collected=}"
+                )
                 self.target_block = block
 
     def bin_pose_callback(self, msg: BinPoseSmoothedArray):
@@ -218,7 +240,7 @@ class ControllerNode(Node):
 
     def _nav_feedback_callback(self, feedback_msg):
         dist = feedback_msg.feedback.distance_remaining
-        self.get_logger().info(f"Navigation feedback: distance_remaining={dist:.3f} m")
+        # self.get_logger().info(f"Navigation feedback: distance_remaining={dist:.3f} m")
 
     def _nav_goal_response_callback(self, future):
         goal_handle = future.result()
@@ -243,9 +265,9 @@ class ControllerNode(Node):
                 self.state = Phase.GraspBlock.ATTEMPT_GRASP
             elif self.state in Phase.ApproachBin:
                 self.get_logger().info(
-                    f"Succesful navigation. Transitioning to phase {Phase.GraspBlock.ATTEMPT_GRASP}"
+                    f"Succesfully navigated to {color_to_str(self.target_bin.color)} bin. Transitioning to phase {Phase.DepositBlock.ATTEMPT_DEPOSIT}"  # type: ignore
                 )
-                self.state = Phase.Explore.EXPLORE
+                self.state = Phase.DepositBlock.ATTEMPT_DEPOSIT
             else:
                 self.get_logger().warn(
                     f"Unexpected state at end of navigation: {self.state=}"
@@ -267,8 +289,10 @@ class ControllerNode(Node):
             self.state = Phase.Explore.EXPLORE
             return
 
-        # TODO(Alex): This block targeting logic should maybe not be in this func
         self.collected.add(target_block.id)
+        color = target_block.color
+        self.get_logger().info(f"Grasping block with color: {color_to_str(color)}")
+        self.get_logger().info(f"Adding target block to {self.collected=}")
         self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
 
     def select_target_bin(self, target_block: BlockPoseSmoothed | None):
@@ -276,26 +300,35 @@ class ControllerNode(Node):
         assert target_block is not None
         color = target_block.color
         color_value = int(color.color)
-        self.get_logger().info(f"Grasping block with color: {color_to_str(color)}")
         for bin in self.bins:
             if int(bin.color.color) != color_value:
                 self.get_logger().info(
-                    f"Ignoring bin {color_to_str(bin.color)} for grasp"
+                    f"Ignoring bin {color_to_str(bin.color)} for targetting"
                 )
                 continue
             self.target_bin = bin
             self.state = Phase.ApproachBin.EXECUTE_NAV
-            self.get_logger().info(f"Succesfully grasped {color_to_str(color)} block")
+            self.get_logger().info(
+                f"Succesfully identified matching {color_to_str(color)} bin"
+            )
             return
         self.get_logger().info(
             f"No matching bin known for block color {color_to_str(color)}"
         )
 
     def deposit_block(self):
+        self.get_logger().info(
+            f"Depositing {color_to_str(self.target_block.color)} block in {color_to_str(self.target_bin.color)} bin"  # type: ignore
+        )
         self.target_block = None
         self.target_bin = None
-        self.get_logger().info("Depositing block")
-        self.state = Phase.Explore.EXPLORE
+
+        # if we have successfully collected 3 blocks, terminate the mission,
+        # or return to the exploration phase to find more
+        if len(self.collected) < 3:
+            self.state = Phase.Explore.EXPLORE
+        else:
+            self.state = Phase.PostDeposit.TERMINATE
 
 
 def main():
