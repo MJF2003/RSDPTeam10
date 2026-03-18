@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+
+# Collects .msg in 'msg/' and .action in 'actions/'
+# Formats as CMake entries and copies to clipboard
+printf '  "%s"\n' msg/*.msg(N) actions/*.action(N) | wl-copy
+
+print "Interfaces copied to clipboard."

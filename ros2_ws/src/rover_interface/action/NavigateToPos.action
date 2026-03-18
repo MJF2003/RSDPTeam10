@@ -1,0 +1,12 @@
+# Target block pose (provided by controller)
+geometry_msgs/PointStamped target_pos
+---
+# Whether the rover reached the approach threshold
+bool success
+# Final XY distance between rover and goal target
+float32 final_distance
+# Human-readable terminal status
+string message
+---
+# Remaining XY distance to target
+float32 distance_remaining

@@ -1,0 +1,15 @@
+# Requested manipulator operation
+uint8 operation
+uint8 GRASP = 0
+uint8 DEPOSIT = 1
+
+# Target block or bin pose (provided by controller)
+geometry_msgs/PointStamped target_pos
+---
+# Whether the manipulator completed the requested operation
+bool success
+# Human-readable terminal status
+string message
+---
+# Current manipulation stage
+string current_stage
