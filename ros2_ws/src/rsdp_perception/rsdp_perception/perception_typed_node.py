@@ -1,39 +1,37 @@
 #!/usr/bin/env python3
 import json
 import time
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from collections import deque, Counter
 
-import numpy as np
-import torch
 import joblib
-import torch.nn as nn
-from torchvision import transforms, models
-from PIL import Image as PILImage
-
+import numpy as np
 import rclpy
-from rclpy.node import Node
-
-from sensor_msgs.msg import Image, CameraInfo
-from std_msgs.msg import String
+import torch
+import torch.nn as nn
+from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Pose
-from message_filters import Subscriber, ApproximateTimeSynchronizer
-
+from message_filters import ApproximateTimeSynchronizer, Subscriber
+from PIL import Image as PILImage
+from rclpy.node import Node
 from rover_interface.msg import (
-    BlockPose,
-    BlockPoseObservation,
-    BinPose,
-    BinPoseObservation,
-    PlatformPose,
-    PlatformPoseObservation,
     BinOpeningPose,
     BinOpeningPoseObservation,
+    BinPose,
+    BinPoseObservation,
+    BlockPose,
+    BlockPoseObservation,
+    PlatformPose,
+    PlatformPoseObservation,
 )
-
+from sensor_msgs.msg import CameraInfo, Image
+from std_msgs.msg import String
+from torchvision import models, transforms
 
 # -------------------- image decode (no cv_bridge) --------------------
+
 
 def image_msg_to_numpy(msg):
     h, w = msg.height, msg.width
@@ -60,6 +58,7 @@ def image_msg_to_numpy(msg):
 
 # -------------------- helpers --------------------
 
+
 def softmax_np(x: np.ndarray) -> np.ndarray:
     x = np.asarray(x, dtype=np.float32)
     x = x - np.max(x)
@@ -71,7 +70,9 @@ def clamp(v: int, lo: int, hi: int) -> int:
     return lo if v < lo else hi if v > hi else v
 
 
-def crop_bgr(img_bgr: np.ndarray, bbox: Tuple[int, int, int, int], pad_frac: float = 0.08) -> np.ndarray:
+def crop_bgr(
+    img_bgr: np.ndarray, bbox: Tuple[int, int, int, int], pad_frac: float = 0.08
+) -> np.ndarray:
     h, w = img_bgr.shape[:2]
     x1, y1, x2, y2 = bbox
     bw = max(1, x2 - x1)
@@ -86,18 +87,22 @@ def crop_bgr(img_bgr: np.ndarray, bbox: Tuple[int, int, int, int], pad_frac: flo
     y2p = clamp(y2 + pad_y, 1, h)
 
     if x2p <= x1p + 1 or y2p <= y1p + 1:
-        return img_bgr[max(0, y1):min(h, y2), max(0, x1):min(w, x2)].copy()
+        return img_bgr[max(0, y1) : min(h, y2), max(0, x1) : min(w, x2)].copy()
 
     return img_bgr[y1p:y2p, x1p:x2p].copy()
 
 
-def deproject(u: int, v: int, z_m: float, fx: float, fy: float, cx: float, cy: float) -> Tuple[float, float, float]:
+def deproject(
+    u: int, v: int, z_m: float, fx: float, fy: float, cx: float, cy: float
+) -> Tuple[float, float, float]:
     x = (float(u) - float(cx)) * float(z_m) / float(fx)
     y = (float(v) - float(cy)) * float(z_m) / float(fy)
     return x, y, float(z_m)
 
 
-def median_depth_m(depth_u16: np.ndarray, u: int, v: int, depth_scale_m: float, window: int = 20) -> Optional[float]:
+def median_depth_m(
+    depth_u16: np.ndarray, u: int, v: int, depth_scale_m: float, window: int = 20
+) -> Optional[float]:
     if depth_u16 is None:
         return None
     h, w = depth_u16.shape[:2]
@@ -126,6 +131,7 @@ def median_depth_m(depth_u16: np.ndarray, u: int, v: int, depth_scale_m: float, 
 
 
 # -------------------- classifier models --------------------
+
 
 class BlockAttrNet(nn.Module):
     def __init__(self, n_colors: int, n_shapes: int):
@@ -157,14 +163,16 @@ class BinColorNet(nn.Module):
 
 
 def build_tfm():
-    return transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ),
-    ])
+    return transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
+        ]
+    )
 
 
 class BinColorHead:
@@ -246,6 +254,7 @@ class BlockAttrsHead:
 
 # -------------------- track data --------------------
 
+
 @dataclass
 class Det:
     cls: str
@@ -314,6 +323,7 @@ def ema_vec(old: np.ndarray, new: np.ndarray, alpha: float) -> np.ndarray:
 
 # -------------------- main node --------------------
 
+
 class PerceptionStableAttrsNode(Node):
     def __init__(self):
         super().__init__("rsdp_perception_stable_attrs")
@@ -323,16 +333,23 @@ class PerceptionStableAttrsNode(Node):
         self._last_attr_warn = 0.0
 
         # params
-        self.declare_parameter("weights", "")
+        # default_model_path = Path(__file__).parent / "../model_weights/best.pt"
+        # self.declare_parameter("weights", str(default_model_path.resolve()))
+        pkg_share = Path(get_package_share_directory("rsdp_perception"))
+        default_model_path = pkg_share / "model_weights" / "best.pt"
+
+        self.declare_parameter("weights", str(default_model_path))
         self.declare_parameter("conf", 0.25)
-        self.declare_parameter("imgsz", 640)
+        self.declare_parameter("imgsz", 416)
 
         self.declare_parameter("depth_scale_m", 0.001)
         self.declare_parameter("depth_window", 20)
         self.declare_parameter("max_depth_m", 3.0)
 
         self.declare_parameter("color_topic", "/camera/camera/color/image_raw")
-        self.declare_parameter("depth_topic", "/camera/camera/aligned_depth_to_color/image_raw")
+        self.declare_parameter(
+            "depth_topic", "/camera/camera/aligned_depth_to_color/image_raw"
+        )
         self.declare_parameter("info_topic", "/camera/camera/color/camera_info")
 
         self.declare_parameter("ema_alpha_xyz", 0.35)
@@ -343,7 +360,7 @@ class PerceptionStableAttrsNode(Node):
 
         self.declare_parameter("vote_window", 10)
         self.declare_parameter("min_votes_to_output", 3)
-        self.declare_parameter("min_attr_conf", 0.40)
+        self.declare_parameter("min_attr_conf", 0.20)
 
         self.declare_parameter("block_attrs_dir", "")
         self.declare_parameter("bin_color_dir", "")
@@ -399,30 +416,46 @@ class PerceptionStableAttrsNode(Node):
         if block_attrs_dir:
             try:
                 self.block_attrs = BlockAttrsHead(Path(block_attrs_dir), self.device)
-                self.get_logger().info(f"Loaded block attrs classifier from {block_attrs_dir}")
+                self.get_logger().info(
+                    f"Loaded block attrs classifier from {block_attrs_dir}"
+                )
             except Exception as e:
-                self.get_logger().warn(f"Failed to load block attrs classifier from {block_attrs_dir}: {e}")
+                self.get_logger().warn(
+                    f"Failed to load block attrs classifier from {block_attrs_dir}: {e}"
+                )
 
         if bin_color_dir:
             try:
                 self.bin_color = BinColorHead(Path(bin_color_dir), self.device)
-                self.get_logger().info(f"Loaded bin color classifier from {bin_color_dir}")
+                self.get_logger().info(
+                    f"Loaded bin color classifier from {bin_color_dir}"
+                )
             except Exception as e:
-                self.get_logger().warn(f"Failed to load bin color classifier from {bin_color_dir}: {e}")
+                self.get_logger().warn(
+                    f"Failed to load bin color classifier from {bin_color_dir}: {e}"
+                )
 
         self.next_id = 1
         self.tracks: Dict[int, Track] = {}
 
         self.pub_tracks_json = self.create_publisher(String, "/cv/tracks_json", 10)
-        self.pub_blocks = self.create_publisher(BlockPoseObservation, "/cv/block_poses", 10)
+        self.pub_blocks = self.create_publisher(
+            BlockPoseObservation, "/cv/block_poses", 10
+        )
         self.pub_bins = self.create_publisher(BinPoseObservation, "/cv/bin_poses", 10)
-        self.pub_openings = self.create_publisher(BinOpeningPoseObservation, "/cv/bin_opening_poses", 10)
-        self.pub_platforms = self.create_publisher(PlatformPoseObservation, "/cv/platform_poses", 10)
+        self.pub_openings = self.create_publisher(
+            BinOpeningPoseObservation, "/cv/bin_opening_poses", 10
+        )
+        self.pub_platforms = self.create_publisher(
+            PlatformPoseObservation, "/cv/platform_poses", 10
+        )
 
         self.sub_color = Subscriber(self, Image, self.color_topic)
         self.sub_depth = Subscriber(self, Image, self.depth_topic)
         self.sub_info = Subscriber(self, CameraInfo, self.info_topic)
-        self.ts = ApproximateTimeSynchronizer([self.sub_color, self.sub_depth, self.sub_info], queue_size=10, slop=0.10)
+        self.ts = ApproximateTimeSynchronizer(
+            [self.sub_color, self.sub_depth, self.sub_info], queue_size=10, slop=0.10
+        )
         self.ts.registerCallback(self.cb)
 
         self.frame_count = 0
@@ -441,7 +474,9 @@ class PerceptionStableAttrsNode(Node):
             self.fy = info_msg.k[4]
             self.cx = info_msg.k[2]
             self.cy = info_msg.k[5]
-            self.get_logger().info(f"Intrinsics fx={self.fx:.2f} fy={self.fy:.2f} cx={self.cx:.2f} cy={self.cy:.2f}")
+            self.get_logger().info(
+                f"Intrinsics fx={self.fx:.2f} fy={self.fy:.2f} cx={self.cx:.2f} cy={self.cy:.2f}"
+            )
 
         try:
             color = image_msg_to_numpy(color_msg)
@@ -468,7 +503,7 @@ class PerceptionStableAttrsNode(Node):
         frame_id = color_msg.header.frame_id or "camera_color_optical_frame"
 
         detections: List[Det] = []
-        for (x1, y1, x2, y2, conf, cls_id) in det:
+        for x1, y1, x2, y2, conf, cls_id in det:
             cls_id = int(cls_id)
             cls = self._class_name(cls_id)
 
@@ -484,15 +519,20 @@ class PerceptionStableAttrsNode(Node):
                 X, Y, Z = deproject(u, v, z, self.fx, self.fy, self.cx, self.cy)
                 xyz = (float(X), float(Y), float(Z))
 
-            detections.append(Det(
-                cls=cls,
-                conf=float(conf),
-                bbox=(x1i, y1i, x2i, y2i),
-                center_px=(u, v),
-                xyz=xyz
-            ))
+            detections.append(
+                Det(
+                    cls=cls,
+                    conf=float(conf),
+                    bbox=(x1i, y1i, x2i, y2i),
+                    center_px=(u, v),
+                    xyz=xyz,
+                )
+            )
 
-        now = float(color_msg.header.stamp.sec) + float(color_msg.header.stamp.nanosec) * 1e-9
+        now = (
+            float(color_msg.header.stamp.sec)
+            + float(color_msg.header.stamp.nanosec) * 1e-9
+        )
         self._update_tracks(detections, color_bgr, now)
 
         if self.publish_every > 1 and (self.frame_count % self.publish_every != 0):
@@ -556,11 +596,15 @@ class PerceptionStableAttrsNode(Node):
             tr.bin_color.confs = deque(tr.bin_color.confs, maxlen=self.vote_window)
             tr.bin_color.probs = deque(tr.bin_color.probs, maxlen=self.vote_window)
 
-            tr.block_color.labels = deque(tr.block_color.labels, maxlen=self.vote_window)
+            tr.block_color.labels = deque(
+                tr.block_color.labels, maxlen=self.vote_window
+            )
             tr.block_color.confs = deque(tr.block_color.confs, maxlen=self.vote_window)
             tr.block_color.probs = deque(tr.block_color.probs, maxlen=self.vote_window)
 
-            tr.block_shape.labels = deque(tr.block_shape.labels, maxlen=self.vote_window)
+            tr.block_shape.labels = deque(
+                tr.block_shape.labels, maxlen=self.vote_window
+            )
             tr.block_shape.confs = deque(tr.block_shape.confs, maxlen=self.vote_window)
             tr.block_shape.probs = deque(tr.block_shape.probs, maxlen=self.vote_window)
 
@@ -572,7 +616,9 @@ class PerceptionStableAttrsNode(Node):
 
         if d.xyz is not None:
             v = np.array(d.xyz, dtype=np.float32)
-            tr.xyz_ema = v if tr.xyz_ema is None else ema_vec(tr.xyz_ema, v, self.ema_alpha_xyz)
+            tr.xyz_ema = (
+                v if tr.xyz_ema is None else ema_vec(tr.xyz_ema, v, self.ema_alpha_xyz)
+            )
 
         self._update_attributes(tr, d, color_bgr)
 
@@ -605,7 +651,9 @@ class PerceptionStableAttrsNode(Node):
                     tr.bin_color.push(label, conf, probd)
 
             if tr.cls == "block" and self.block_attrs is not None:
-                c_lab, c_conf, c_prob, s_lab, s_conf, s_prob = self.block_attrs.predict(crop)
+                c_lab, c_conf, c_prob, s_lab, s_conf, s_prob = self.block_attrs.predict(
+                    crop
+                )
                 if c_conf >= self.min_attr_conf:
                     tr.block_color.push(c_lab, c_conf, c_prob)
                 if s_conf >= self.min_attr_conf:
@@ -618,7 +666,9 @@ class PerceptionStableAttrsNode(Node):
             now = time.time()
             if now - self._last_attr_warn > 2.0:
                 self._last_attr_warn = now
-                self.get_logger().warn(f"Attribute prediction failed (ok={self.attr_ok} fail={self.attr_fail}): {e}")
+                self.get_logger().warn(
+                    f"Attribute prediction failed (ok={self.attr_ok} fail={self.attr_fail}): {e}"
+                )
 
     def _pose_from_xyz(self, xyz: np.ndarray) -> Pose:
         p = Pose()
@@ -628,7 +678,9 @@ class PerceptionStableAttrsNode(Node):
         p.orientation.w = 1.0
         return p
 
-    def _attr_summary(self, vote: AttrVote) -> Tuple[Optional[str], Optional[float], Dict[str, float], int]:
+    def _attr_summary(
+        self, vote: AttrVote
+    ) -> Tuple[Optional[str], Optional[float], Dict[str, float], int]:
         if len(vote.labels) < self.min_votes:
             return None, None, {}, len(vote.labels)
         label = vote.mode()
@@ -666,8 +718,12 @@ class PerceptionStableAttrsNode(Node):
             pose = self._pose_from_xyz(tr.xyz_ema)
 
             bin_color, bin_cconf, bin_probs, bin_n = self._attr_summary(tr.bin_color)
-            blk_color, blk_cconf, blk_cprobs, blk_cn = self._attr_summary(tr.block_color)
-            blk_shape, blk_sconf, blk_sprobs, blk_sn = self._attr_summary(tr.block_shape)
+            blk_color, blk_cconf, blk_cprobs, blk_cn = self._attr_summary(
+                tr.block_color
+            )
+            blk_shape, blk_sconf, blk_sprobs, blk_sn = self._attr_summary(
+                tr.block_shape
+            )
 
             if tr.cls == "block":
                 obj = BlockPose()
@@ -722,33 +778,41 @@ class PerceptionStableAttrsNode(Node):
                 obj.center_v = int(tr.last_center_px[1])
                 opening_msg.observations.append(obj)
 
-            tracks_out.append({
-                "id": tr.track_id,
-                "class": tr.cls,
-                "conf": round(float(tr.conf_ema), 3),
-                "xyz_m": [round(float(x), 4) for x in tr.xyz_ema.tolist()],
-                "age": tr.age,
-                "missed": tr.missed,
-                "center_px": [int(tr.last_center_px[0]), int(tr.last_center_px[1])],
-                "bin_color": {
-                    "label": bin_color,
-                    "conf": None if bin_cconf is None else round(float(bin_cconf), 3),
-                    "votes": bin_n,
-                    "probs": bin_probs,
-                },
-                "block_color": {
-                    "label": blk_color,
-                    "conf": None if blk_cconf is None else round(float(blk_cconf), 3),
-                    "votes": blk_cn,
-                    "probs": blk_cprobs,
-                },
-                "block_shape": {
-                    "label": blk_shape,
-                    "conf": None if blk_sconf is None else round(float(blk_sconf), 3),
-                    "votes": blk_sn,
-                    "probs": blk_sprobs,
-                },
-            })
+            tracks_out.append(
+                {
+                    "id": tr.track_id,
+                    "class": tr.cls,
+                    "conf": round(float(tr.conf_ema), 3),
+                    "xyz_m": [round(float(x), 4) for x in tr.xyz_ema.tolist()],
+                    "age": tr.age,
+                    "missed": tr.missed,
+                    "center_px": [int(tr.last_center_px[0]), int(tr.last_center_px[1])],
+                    "bin_color": {
+                        "label": bin_color,
+                        "conf": (
+                            None if bin_cconf is None else round(float(bin_cconf), 3)
+                        ),
+                        "votes": bin_n,
+                        "probs": bin_probs,
+                    },
+                    "block_color": {
+                        "label": blk_color,
+                        "conf": (
+                            None if blk_cconf is None else round(float(blk_cconf), 3)
+                        ),
+                        "votes": blk_cn,
+                        "probs": blk_cprobs,
+                    },
+                    "block_shape": {
+                        "label": blk_shape,
+                        "conf": (
+                            None if blk_sconf is None else round(float(blk_sconf), 3)
+                        ),
+                        "votes": blk_sn,
+                        "probs": blk_sprobs,
+                    },
+                }
+            )
 
         self.pub_blocks.publish(block_msg)
         self.pub_bins.publish(bin_msg)
@@ -756,23 +820,27 @@ class PerceptionStableAttrsNode(Node):
         self.pub_openings.publish(opening_msg)
 
         dbg = String()
-        dbg.data = json.dumps({
-            "schema_version": "cv_tracks_json_v1",
-            "producer": "rsdp_perception_stable_attrs",
-            "stamp": {
-                "sec": int(color_msg.header.stamp.sec),
-                "nanosec": int(color_msg.header.stamp.nanosec),
-            },
-            "frame_id": frame_id,
-            "yolo_fps": round(float(fps), 2),
-            "tracks": tracks_out,
-        })
+        dbg.data = json.dumps(
+            {
+                "schema_version": "cv_tracks_json_v1",
+                "producer": "rsdp_perception_stable_attrs",
+                "stamp": {
+                    "sec": int(color_msg.header.stamp.sec),
+                    "nanosec": int(color_msg.header.stamp.nanosec),
+                },
+                "frame_id": frame_id,
+                "yolo_fps": round(float(fps), 2),
+                "tracks": tracks_out,
+            }
+        )
         self.pub_tracks_json.publish(dbg)
 
         if (self.frame_count % 30) == 0:
             self.get_logger().info(f"pub tracks={len(tracks_out)} yolo_fps~{fps:.1f}")
         if (self.frame_count % 50) == 0:
-            self.get_logger().info(f"attr stats: ok={self.attr_ok} fail={self.attr_fail}")
+            self.get_logger().info(
+                f"attr stats: ok={self.attr_ok} fail={self.attr_fail}"
+            )
 
 
 def main():
