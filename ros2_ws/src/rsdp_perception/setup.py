@@ -5,18 +5,34 @@ from setuptools import find_packages, setup
 
 package_name = "rsdp_perception"
 
+
+package_name = "rsdp_perception"
+
+
+def get_data_files(directory):
+    paths = []
+    for path, _, filenames in os.walk(directory):
+        for filename in filenames:
+            paths.append(
+                (
+                    os.path.join("share", package_name, path),
+                    [os.path.join(path, filename)],
+                )
+            )
+    return paths
+
+
+data_files = [
+    ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
+    ("share/" + package_name, ["package.xml"]),
+] + get_data_files("model_weights")
+
+
 setup(
     name=package_name,
     version="0.0.0",
     packages=find_packages(exclude=["test"]),
-    data_files=[
-        ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
-        ("share/" + package_name, ["package.xml"]),
-        (
-            os.path.join("share", package_name, "model_weights"),
-            glob("model_weights/*.pt"),
-        ),
-    ],
+    data_files=data_files,
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="laptop30",
