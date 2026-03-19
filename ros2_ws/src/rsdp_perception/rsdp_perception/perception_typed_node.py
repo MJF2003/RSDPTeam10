@@ -3,6 +3,7 @@ import json
 import time
 from collections import Counter, deque
 from dataclasses import dataclass, field
+from os.path import abspath
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -16,6 +17,10 @@ from geometry_msgs.msg import Pose
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from PIL import Image as PILImage
 from rclpy.node import Node
+from sensor_msgs.msg import CameraInfo, Image
+from std_msgs.msg import String
+from torchvision import models, transforms
+
 from rover_interface.msg import (
     BinOpeningPose,
     BinOpeningPoseObservation,
@@ -26,9 +31,6 @@ from rover_interface.msg import (
     PlatformPose,
     PlatformPoseObservation,
 )
-from sensor_msgs.msg import CameraInfo, Image
-from std_msgs.msg import String
-from torchvision import models, transforms
 
 # -------------------- image decode (no cv_bridge) --------------------
 
@@ -333,12 +335,10 @@ class PerceptionStableAttrsNode(Node):
         self._last_attr_warn = 0.0
 
         # params
-        # default_model_path = Path(__file__).parent / "../model_weights/best.pt"
-        # self.declare_parameter("weights", str(default_model_path.resolve()))
         pkg_share = Path(get_package_share_directory("rsdp_perception"))
-        default_model_path = pkg_share / "model_weights" / "best.pt"
+        weights_dir = pkg_share / "model_weights"
 
-        self.declare_parameter("weights", str(default_model_path))
+        self.declare_parameter("weights", abspath(weights_dir / "yolo.pt"))
         self.declare_parameter("conf", 0.25)
         self.declare_parameter("imgsz", 416)
 
@@ -362,8 +362,12 @@ class PerceptionStableAttrsNode(Node):
         self.declare_parameter("min_votes_to_output", 3)
         self.declare_parameter("min_attr_conf", 0.20)
 
-        self.declare_parameter("block_attrs_dir", "")
-        self.declare_parameter("bin_color_dir", "")
+        self.declare_parameter(
+            "block_attrs_dir", abspath(weights_dir / "block_attrs" / "clf_out")
+        )
+        self.declare_parameter(
+            "bin_color_dir", abspath(weights_dir / "bin_colors" / "clf_out")
+        )
 
         self.declare_parameter("crop_pad_frac", 0.08)
         self.declare_parameter("publish_every_n_frames", 1)
