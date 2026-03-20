@@ -23,6 +23,7 @@
     4. Current phase of controller 
 ~9. Cut back on some of the spammy logging out of the controller nodes - maybe set a heartbeat message which each node can set? Or something~
 10. The controller ignores block updates during some moves, but that doesn't stop the smoothing node from updating them - which the controller will then ingest the next time it moves to a new state. May or may not be a problem (in principle the block will be deposited by the time the controller accepts new observations)
+11. Add obstacles to the map
 
 
 # TODOs in the code 
@@ -33,7 +34,7 @@
 - When we run the longer-term policy, the rover ends up in the wrong location. Is that because, even in sim, /odom drifts? Or what else could be going on? How could I visualise it? What are the positions relative to? Would this be a problem if I'm maintaining things in the map frame?
 
 # NEXT STEPS
-NEXT: Set up tf transforms properly so that the fake vision observations are occuring in the map frame. We will want to properly handle observations in the camera frame.
+NEXT: sim? something idk? Maybe more stuff on frames and tf transforms?
 
 - Q - is it time to start working on the visualisation setup in rviz?
 - IDEA - if the smoothing node finds a new node far from an old one with the same colour as another one, overwrite it - may be able handle the SLAM drift
