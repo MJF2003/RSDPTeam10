@@ -15,21 +15,32 @@ find_package(unique_identifier_msgs REQUIRED)
 #### ROS2 Interface Directives ####
 set(interface_files
   # Messages
+  "msg/BinOpeningPose.msg"
+  "msg/BinOpeningPoseObservation.msg"
+  "msg/BinPose.msg"
+  "msg/BinPoseObservationDep.msg"
   "msg/BinPoseObservation.msg"
   "msg/BinPoseSmoothedArray.msg"
   "msg/BinPoseSmoothed.msg"
   "msg/BlockBinColor.msg"
+  "msg/BlockPose.msg"
+  "msg/BlockPoseObservationDep.msg"
   "msg/BlockPoseObservation.msg"
   "msg/BlockPoseSmoothedArray.msg"
   "msg/BlockPoseSmoothed.msg"
   "msg/BlockShape.msg"
   "msg/BoundingBox.msg"
+  "msg/PlatformPose.msg"
+  "msg/PlatformPoseObservationDep.msg"
   "msg/PlatformPoseObservation.msg"
   "msg/PlatformPoseSmoothedArray.msg"
   "msg/PlatformPoseSmoothed.msg"
   # Actions
+  "action/ManipulateBlock.action"
   "action/NavigateToPos.action"
 )
+
+
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${interface_files}

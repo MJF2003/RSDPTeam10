@@ -1,6 +1,3 @@
-# The platform position. Note that it does not include orientation 
-# as this isn't output by the YOLO-based CV node
-geometry_msgs/PointStamped pos
-
-# The bounding box of the platform
-BoundingBox bbox
+std_msgs/Header header
+float32 yolo_fps
+rover_interface/PlatformPose[] observations
