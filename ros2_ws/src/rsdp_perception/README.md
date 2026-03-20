@@ -2,7 +2,10 @@
 To run the YOLO model, you need a number of packages installed. The best way to do this is by installing the relevant packages from the ultralytics repository - this will ensure the versions are compatible. NOTE: as with other ROS2 crap, this will install into the global system environment. You may also need to install `scikit-learn` for the classifiers.
 
 ```bash
+sudo apt update
+sudo apt install python3-pip
 pip3 install --break-system-packages -r https://raw.githubusercontent.com/ultralytics/yolov5/master/requirements.txt
+pip3 install --break-system-packages scikit-learn
 ```
 
 You also need to install the realsense ROS2 package to interface with the camera
@@ -21,6 +24,7 @@ Alternatively, you can try installing the packages by hand. I recommend avoiding
 - seaborn
 - numpy < 2.0.0
 - opencv
+- scikit-learn
 
 # Running the Node
 To run the node directly, run

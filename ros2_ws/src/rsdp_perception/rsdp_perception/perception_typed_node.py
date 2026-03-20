@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import time
+import warnings
 from collections import Counter, deque
 from dataclasses import dataclass, field
 from os.path import abspath
@@ -32,6 +33,8 @@ from rover_interface.msg import (
     PlatformPoseObservation,
 )
 
+# Suppress some torch warning spam
+warnings.simplefilter(action="ignore", category=FutureWarning)
 # -------------------- image decode (no cv_bridge) --------------------
 
 
