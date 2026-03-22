@@ -22,6 +22,7 @@
 import os
 
 from ament_index_python.packages import get_package_share_directory
+from launch.actions import AppendEnvironmentVariable
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description import LaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -34,6 +35,17 @@ def generate_launch_description():
     pkg_ros_gz_sim = get_package_share_directory("ros_gz_sim")
     pkg_project_gazebo = get_package_share_directory("rover_gz_bringup")
     pkg_project_worlds = get_package_share_directory("leo_gz_worlds")
+
+    # Added to permit the search of other packages for robot description resources
+    mycobot_path = get_package_share_directory('mycobot_description')
+    rover_path = get_package_share_directory('rover_description')
+
+    mycobot_base_path = os.path.dirname(mycobot_path)
+    rover_base_path = os.path.dirname(rover_path)
+
+    gazebo_model_paths = mycobot_base_path + os.pathsep + rover_base_path
+
+
 
     sim_world = DeclareLaunchArgument(
         "sim_world",
@@ -90,8 +102,14 @@ def generate_launch_description():
         output="screen",
     )
 
+
+
     return LaunchDescription(
-        [
+        [   
+            AppendEnvironmentVariable(
+            name='GZ_SIM_RESOURCE_PATH',
+            value=gazebo_model_paths
+        ), 
             sim_world,
             robot_ns,
             gz_sim,

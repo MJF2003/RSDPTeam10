@@ -19,9 +19,9 @@
     </visual>
     <collision>
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/joint1_pi.dae"/>
+        <cylinder radius="0.043" length="0.08"/>
       </geometry>
-      <origin xyz="0.0 0 0" rpy="0 0 0"/>
+      <origin xyz="0.0 0 0.04" rpy="0 0 0"/>
     </collision>
   </link>
 
@@ -39,9 +39,9 @@
     </visual>
     <collision>
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/joint2.dae"/>
+        <cylinder radius="0.024" length="0.084"/>
       </geometry>
-      <origin xyz="0.0 0 -0.06096" rpy="0 0 -1.5708"/>
+      <origin xyz="0.0 0 -0.02" rpy="0 0 -1.5708"/>
     </collision>
   </link>
 
@@ -59,9 +59,9 @@
     </visual>
     <collision>
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/joint3.dae"/>
+        <cylinder radius="0.024" length="0.150"/>
       </geometry>
-      <origin xyz="0.0 0 0.03256" rpy="0 -1.5708 0"/>
+      <origin xyz="-0.06 0 0.06" rpy="0 -1.5708 0"/>
     </collision>
   </link>
 
@@ -79,9 +79,9 @@
     </visual>
     <collision>
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/joint4.dae"/>
+        <cylinder radius="0.024" length="0.135"/>
       </geometry>
-      <origin xyz="0.0 0 0.03056" rpy="0 -1.5708 0"/>
+      <origin xyz="-0.052 0 0.0" rpy="0 -1.5708 0"/>
     </collision>
   </link>
 
@@ -99,9 +99,9 @@
     </visual>
     <collision>
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/joint5.dae"/>
+        <cylinder radius="0.024" length="0.054"/>
       </geometry>
-      <origin xyz="0.0 -0.001 -0.0345" rpy="0 -1.5708 1.5708"/>
+      <origin xyz="0.0 0.0 0" rpy="0 1.5708 1.5708"/>
     </collision>
   </link>
 
@@ -119,9 +119,9 @@
     </visual>
     <collision>
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/joint6.dae"/>
+        <cylinder radius="0.024" length="0.059"/>
       </geometry>
-      <origin xyz="0 0.00 -0.038" rpy="0 0 0"/>
+      <origin xyz="0 0.00 -0.015" rpy="0 0 0"/>
     </collision>
   </link>
 
@@ -139,9 +139,9 @@
     </visual>
     <collision>
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/joint7.dae"/>
+        <cylinder radius="0.024" length="0.014"/>
       </geometry>
-      <origin xyz="0.0 0 -0.012" rpy="0 0 0"/>
+      <origin xyz="0.0 0 -0.007" rpy="0 0 0"/>
     </collision>
   </link>
 

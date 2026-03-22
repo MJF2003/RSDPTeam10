@@ -28,7 +28,7 @@
   <xacro:include filename="$(find leo_description)/urdf/macros.xacro"/>
 
   <xacro:if value="$(arg use_gazebo)">
-    <xacro:leo_gazebo />
+    <xacro:leo_sim />
   </xacro:if>
   <xacro:unless value="$(arg use_gazebo)">
     <xacro:leo />
@@ -53,8 +53,9 @@
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://rover_description/meshes/lidar.stl" scale="0.001 0.001 0.001"/>
+        <cylinder radius="0.0375" length="0.050"/>
       </geometry>
+      <origin xyz="0 0 -0.025" rpy="0 0 0" />
     </collision>
     <inertial>
       <mass value="0.190"/>
@@ -108,8 +109,9 @@
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://rover_description/meshes/camera.stl" scale="0.001 0.001 0.001"/>
+        <box size="0.09 0.025 0.025" />
       </geometry>
+      <origin xyz="0 0 0" rpy="0 0 -1.5708" />
     </collision>
     <inertial>
       <mass value="0.072"/>

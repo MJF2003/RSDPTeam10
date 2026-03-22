@@ -34,21 +34,13 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
     pkg_project_description = get_package_share_directory("leo_description")
     robot_ns = context.perform_substitution(namespace)
 
-    # robot_desc = xacro.process(
-    #     os.path.join(
-    #         pkg_project_description,
-    #         "urdf",
-    #         "leo_sim.urdf.xacro",
-    #     ),
-    #     mappings={"robot_ns": robot_ns},
-    # )
     robot_desc = xacro.process(
         os.path.join(
             get_package_share_directory("rover_description"),
             "urdf",
-            "rover.urdf.xacro",
+            "team_10_rover.urdf.xacro",
         ),
-        mappings={"robot_ns": robot_ns},
+        mappings={"use_gazebo": "true"},
     )
 
     if robot_ns == "":
@@ -131,6 +123,8 @@ def generate_launch_description():
         default_value="",
         description="Robot namespace",
     )
+
+    
 
     namespace = LaunchConfiguration("robot_ns")
 
