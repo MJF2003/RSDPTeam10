@@ -16,6 +16,7 @@ A quick explainer of the individual packages is given below. Contributors should
 
 - `rover_interface` Defines the messages and actions used by other packages.
 - `rover_controller` Defines a finite state machine which tracks mission progress and executes the main plan.
+- `rover_decription` Defines a modularised URDF of the team robot to be used in both sim and for real transform tree.
 
 ## Running the Simulator
 To run the sim, you need to export a shell variable so ROS knows where to find the models. You can also add the export to your `.bashrc` or `.zshrc` so you don't need to re-run it. I'm sure there's a better way to do this automatically, but I don't know how to do it. We also install the leo package which provides the Leo Rover description
@@ -38,3 +39,4 @@ The sim exposes stub modules which do basic actions - like a vision stub which g
 ```
 
 Check the launch file for the full list of launch arguments.
+

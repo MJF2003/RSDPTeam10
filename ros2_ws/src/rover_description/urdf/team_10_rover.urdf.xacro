@@ -16,15 +16,12 @@
   <xacro:arg name="camera_xyz" default="0.1746 0 0.0906"/>
   <xacro:arg name="camera_rpy" default="0 0.4712 0"/>
 
+  <xacro:arg name="robot_ns" default=""/>
+
   <!-- ===================== -->
   <!-- Include LeoRover      -->
   <!-- ===================== -->
 
-<!--
-  <xacro:arg name="fixed" default="false"/>
-  <xacro:arg name="robot_ns" default=""/>
-  <xacro:arg name="mecanum_wheels" default="false"/>
--->
   <xacro:include filename="$(find leo_description)/urdf/macros.xacro"/>
 
   <xacro:if value="$(arg use_gazebo)">
@@ -65,6 +62,8 @@
     </inertial>
   </link>
 
+
+<!-- Conditionally boot the Gazebo plugin for lidar --> 
   <xacro:if value="$(arg use_gazebo)">
     <gazebo reference="lidar_link">
       <sensor name="rplidar_a2m12" type="gpu_lidar">
@@ -119,14 +118,18 @@
     </inertial>
   </link>
 
+  <!-- Required since camera frame is different axis to the model geometry -->
+  <link name="depth_camera_optical_frame"/>
+
+<!-- Conditionally boot the Gazebo plugin for a depth camera --> 
   <xacro:if value="$(arg use_gazebo)">
     <gazebo reference="depth_camera_link">
-      <sensor name="camera_sensor" type="rgbd_camera">
+      <sensor name="depth_camera_sensor" type="rgbd_camera">
         <always_on>true</always_on>
         <visualize>true</visualize>
         <update_rate>30.0</update_rate>
-        <topic>camera</topic>
-        <gz_frame_id>depth_camera_link</gz_frame_id>
+        <topic>depth_camera</topic>
+        <gz_frame_id>depth_camera_optical_frame</gz_frame_id>
         <camera name="d435i">
           <horizontal_fov>1.204</horizontal_fov>
           <image>
@@ -170,6 +173,13 @@
     <parent link="base_link"/>
     <child link="depth_camera_link"/>
     <origin xyz="$(arg camera_xyz)" rpy="$(arg camera_rpy)"/>
+  </joint>
+
+  <!-- & associated optical frame -->
+  <joint name="depth_camera_optical_joint" type="fixed">
+    <parent link="depth_camera_link"/>
+    <child link="depth_camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
   </joint>
 
 </robot>

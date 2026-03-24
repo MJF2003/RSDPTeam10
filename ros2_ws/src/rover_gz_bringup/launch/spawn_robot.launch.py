@@ -89,8 +89,9 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
             robot_ns + "/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
             robot_ns + "/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
             robot_ns + "/imu/data_raw@sensor_msgs/msg/Imu[gz.msgs.IMU",
-            robot_ns
-            + "/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            robot_ns + "/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
+            robot_ns + "/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            robot_ns + "/depth_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
             robot_ns + "/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model",
         ],
         parameters=[
@@ -105,15 +106,37 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
     image_bridge = Node(
         package="ros_gz_image",
         executable="image_bridge",
-        name=node_name_prefix + "image_bridge",
+        name=node_name_prefix + "leo_image_bridge",
         arguments=[robot_ns + "/camera/image_raw"],
         output="screen",
     )
+
+    # Depth Cam RGB image bridge
+    depth_cam_rgb = Node(
+        package="ros_gz_image",
+        executable="image_bridge",
+        name=node_name_prefix + "depth_rgb_bridge",
+        arguments=[robot_ns + "/depth_camera/image"],
+        output="screen",
+    )
+
+    # Depth Cam Depth image bridge
+    depth_cam_depth = Node(
+        package="ros_gz_image",
+        executable="image_bridge",
+        name=node_name_prefix + "depth_depth_bridge",
+        arguments=[robot_ns + "/depth_camera/depth_image"],
+        output="screen",
+    )
+
+
     return [
         robot_state_publisher,
         leo_rover,
         topic_bridge,
         image_bridge,
+        depth_cam_rgb,
+        depth_cam_depth
     ]
 
 
@@ -123,8 +146,6 @@ def generate_launch_description():
         default_value="",
         description="Robot namespace",
     )
-
-    
 
     namespace = LaunchConfiguration("robot_ns")
 

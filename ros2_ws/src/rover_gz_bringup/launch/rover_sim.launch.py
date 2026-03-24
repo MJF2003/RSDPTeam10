@@ -18,6 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# =================================
+# Customise LeoRover launch file for sim launch
+# Adds all necessary resource
+# Launches world and triggers rover spawn
+# =================================
 
 import os
 
@@ -44,7 +49,6 @@ def generate_launch_description():
     rover_base_path = os.path.dirname(rover_path)
 
     gazebo_model_paths = mycobot_base_path + os.pathsep + rover_base_path
-
 
 
     sim_world = DeclareLaunchArgument(
@@ -105,8 +109,9 @@ def generate_launch_description():
 
 
     return LaunchDescription(
+        # Add the resource location of Gazebo models to the runtime environment
         [   
-            AppendEnvironmentVariable(
+            AppendEnvironmentVariable(          
             name='GZ_SIM_RESOURCE_PATH',
             value=gazebo_model_paths
         ), 
