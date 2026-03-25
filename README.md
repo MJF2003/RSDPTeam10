@@ -43,7 +43,7 @@ Check the launch file for the full list of launch arguments.
 ## Required ROS2 Package Installation
 There are a number of packages, not included in the repository which our custom packages rely on. These are listed as follows:
 
-`mycobot_ros2` - Provided by ElephantRobotics and providing functionality and description for our Arm (and apparently and rather unhelpfully, every single other manipulator they sell). Installation steps taken from [Elephant Robotics](https://github.com/elephantrobotics/mycobot_ros2)
+`mycobot_ros2` - Provided by ElephantRobotics and providing functionality and description for our Arm (and apparently and rather unhelpfully, every single other manipulator they sell). Installation steps taken from [Elephant Robotics](https://github.com/elephantrobotics/mycobot_ros2). You may have to separately install `python3-tk` and `python3-numpy` if running on Ubuntu 24.04.
 ```bash
 > cd <path_to_the_repo>/RSDPTeam10/ros2_ws/src/
 
@@ -51,6 +51,6 @@ There are a number of packages, not included in the repository which our custom 
 > git clone -b humble --depth 1 https://github.com/elephantrobotics/mycobot_ros2.git  # There is no Jazzy branch. ROS is a pain
 > cd <path_to_the_repo>/RSDPTeam10/ros2_ws
 > vcs import src < src/warehouse_ros_mongo.repos
-> sudo apt-get update && rosdep install --from-paths src --ignore-src -y
-
+> sudo apt-get update && rosdep install --from-paths src --ignore-src -r -y --skip-keys="python-tk python-numpy"
+> sudo apt-get python3-tk python3-numpy
 ```
