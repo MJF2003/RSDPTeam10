@@ -38,6 +38,7 @@ set(interface_files
   # Actions
   "action/ManipulateBlock.action"
   "action/NavigateToPos.action"
+  "action/Explore.action"
 )
 
 

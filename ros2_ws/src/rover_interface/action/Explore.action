@@ -1,0 +1,10 @@
+# Action to signal a generic explore action to the navigation node
+# empty action - we just want to tell the node to explore
+---
+# Whether the action was successfully concluded
+bool success
+# Human-readable terminal status
+string message
+---
+# Remaining 
+float32 time_elapsed
