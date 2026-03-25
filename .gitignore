@@ -7,4 +7,5 @@ ros2_ws/log/
 
 __pycache__/
 *.pyc
-ros2_ws/src/mycobot_ros2
+
+*.pt
