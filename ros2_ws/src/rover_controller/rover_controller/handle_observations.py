@@ -146,7 +146,7 @@ class AggregateObservations(Node):
 
     def publish_smoothed_bin_array(self):
         if self.bin_poses is None:
-            self.get_logger().info("No known bin positions to publish")
+            # self.get_logger().info("No known bin positions to publish")
             return
 
         msg = BinPoseSmoothedArray()
