@@ -16,6 +16,7 @@ def generate_launch_description():
     rviz_config = os.path.join(config_dir, "catorgrapher_rviz.rviz")
     launch_rviz = LaunchConfiguration("launch_rviz")
     launch_rplidar = LaunchConfiguration("launch_rplidar")
+    use_sim_time = LaunchConfiguration("use_sim_time")
 
     launch_rviz_arg = DeclareLaunchArgument(
         "launch_rviz",
@@ -28,6 +29,11 @@ def generate_launch_description():
         default_value="false",
         description="Launch the RPLIDAR driver alongside the SLAM stack.",
     )
+    use_sim_time_arg = DeclareLaunchArgument(
+        "use_sim_time",
+        default_value="true",
+        description="Use Gazebo /clock when running SLAM in simulation. Set to false for hardware.",
+    )
 
     static_tf_laser = Node(
         package="tf2_ros",
@@ -35,6 +41,7 @@ def generate_launch_description():
         name="base_to_laser_tf",
         output="screen",
         arguments=["0.09", "0.0", "0.23", "0", "0", "0", "base_link", "laser"],
+        parameters=[{"use_sim_time": use_sim_time}],
     )
 
     cartographer_node = Node(
@@ -48,7 +55,7 @@ def generate_launch_description():
             "-configuration_basename",
             "catorgrapher_config.lua",
         ],
-        parameters=[{"use_sim_time": False}],
+        parameters=[{"use_sim_time": use_sim_time}],
         remappings=[
             ("scan", "/scan"),
         ],
@@ -65,7 +72,7 @@ def generate_launch_description():
             "-publish_period_sec",
             "1.0",
         ],
-        parameters=[{"use_sim_time": False}],
+        parameters=[{"use_sim_time": use_sim_time}],
     )
 
     rplidar_launch = IncludeLaunchDescription(
@@ -93,6 +100,7 @@ def generate_launch_description():
         name="rviz2",
         arguments=["-d", rviz_config],
         output="screen",
+        parameters=[{"use_sim_time": use_sim_time}],
         condition=IfCondition(launch_rviz),
     )
 
@@ -100,6 +108,7 @@ def generate_launch_description():
         [
             launch_rviz_arg,
             launch_rplidar_arg,
+            use_sim_time_arg,
             static_tf_laser,
             cartographer_node,
             occupancy_grid_node,
