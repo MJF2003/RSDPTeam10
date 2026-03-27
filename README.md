@@ -1,40 +1,75 @@
-# RSDPTeam10
-AERO62520 Robotic Systems Design Project Team 10
+# Navigatoin Node
+This package is a robot navigation package developed based on the ROS 2 Nav2 (Navigation 2 Stack) framework. It provides a comprehensive solution for leo-rover, ranging from path planning to motion control, and integrates a custom Action Server interface that allows external programs to control the robot's movement via coordinate points.
 
-## Introduction
-This repository contains ROS2 code used in the RSDP Leo Rover project. This code is organised into ROS2 packages and nodes which execute separate logic. Most code currently lives in branches as teammates work on individual task solving. This will be merged into `main` as packages are completed and integrated.
+# Installation of Navigation Node
+## 1. Packages
+sudo apt update
+sudo apt install ros-jazzy-navigation2
+sudo apt install ros-jazzy-nav2-bringup
+sudo apt install ros-jazzy-nav2-simple-commander
+sudo apt install ros-jazzy-turtlebot3-msgs
+sudo apt install ros-jazzy-tf2-geometry-msgs
 
-## Contributing
-This repo follows standard software development best practice. All commits should be made on branches, and merged into `main` via pull requests. For more details on using Git, see the internal team [Guide to Git](https://livemanchesterac-my.sharepoint.com/:w:/g/personal/alexander_inch_postgrad_manchester_ac_uk/IQBNWKkrWXlWRrZvdg0988FWATn3JgwjHPRF73FxCxYHUuE?e=fSUf5N). The intention is that the `main` branch remains clean; this is where the code run on the main Rover will be contained, so it is paramount that it stays relatively clean.
-
-## Repo Structure
-A diagram indicating the planned software architecture is shown below. Each blue node below corresponds to a separate ROS2 package which will run during the robot's mission.
-
-![repo structure](imgs/rsdp_software_blocks.png)
-
-A quick explainer of the individual packages is given below. Contributors should update this list as they merge relevant pull requests introducting new packages:
-
-- `rover_interface` Defines the messages and actions used by other packages.
-- `rover_controller` Defines a finite state machine which tracks mission progress and executes the main plan.
-
-## Running the Simulator
-To run the sim, you need to export a shell variable so ROS knows where to find the models. You can also add the export to your `.bashrc` or `.zshrc` so you don't need to re-run it. I'm sure there's a better way to do this automatically, but I don't know how to do it. We also install the leo package which provides the Leo Rover description
+## 2. Model Weights
 ```bash
-> sudo apt install ros-jazzy-leo
-
-> export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:<path_to_the_repo>/RSDPTeam10/ros2_ws/src/rover_sim_gazebo/models
-> export GZ_SIM_SYSTEM_PLUGIN_PATH=$GZ_SIM_SYSTEM_PLUGIN_PATH:/usr/lib/x86_64-linux-gnu/gz-sim-8/plugin
+navigation_2/
+├── config/
+│   └── neo_robot.yaml
+│   └── behavior_trees
+│       └── navigate_through_poses_w_replanning_and_recovery.xml
+│       └── navigate_to_pose_w_replanning_and_recovery.xml
+├── launch/
+│   └── navigation.launch.py
+├── navigation_2/
+│   └── navigation_service_node.py
+├── package.xml
+└── setup.py
 ```
 
-You can then run the simulator using 
+navigation.launch.py: Launch all navigation components (controllers, planners, etc.) with a single click and bind them to the lifecycle manager.
+neo_robot.yaml: Standardize the definitions of the robot's physical radius, maximum speed, obstacle avoidance distance, and behavior tree paths.
+navigation_service_node.py: Listen for external topics and pass coordinate commands to the Nav2 engine.
+navigate_through_poses_w_replanning_and_recovery.xml & navigate_to_pose_w_replanning_and_recovery.xml: Behavior tree logic definition.
+
+
+## 3. Edit path in neo_robot.yaml
+Change absolute path of the behavior tree:
+1. Change `default_nav_to_pose_bt_xml` to `default_nav_to_pose_bt_xml: ".../install/navigation_2/share/navigation_2/config/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml"`
+2. Change `default_nav_through_poses_bt_xml: ` to `default_nav_through_poses_bt_xml: ".../install/navigation_2/share/navigation_2/config/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"`
+
+## 4. Integration
+Map topic: /map
+Odometer topic: /wheel_odom
+Speed command listener topic: /cmd_vel
+
+Global coordinate system name: map
+Odometer coordinate system name: odom
+Robot coordinate system: base_link
+
+Target position topic: /platform_poses
+Target position message type: geometry_msgs/msg/PoseStamped
+
+## 5. Running the Node
 ```bash
-> ros2 launch rover_controller launch_sim.py
+ros2 launch navigation_2 navigation.launch.py use_sim_time:=false
 ```
 
-The sim exposes stub modules which do basic actions - like a vision stub which generates noisy observations by directly reading the Gazebo positions. You can disable specific stubs as follows.
-
+To run the node directly, run
 ```bash
-> ros2 launch rover_controller launch_sim.py run_vision_stub:=false run_navigation_stub:=false run_smooth_observations:=false run_rover_controller:=false
+ros2 run rsdp_perception vision_node
 ```
 
-Check the launch file for the full list of launch arguments.
+You can override a few useful `vision_node` parameters from launch without editing code. For example:
+```bash
+ros2 launch rsdp_perception vision.launch.py conf:=0.35 vote_window:=6 min_votes_to_output:=2
+```
+
+The launch file also exposes the subscribed topics and RealSense sync/aligned-depth settings:
+```bash
+ros2 launch rsdp_perception vision.launch.py \
+  align_depth.enable:=true \
+  enable_sync:=true \
+  color_topic:=/camera/camera/color/image_raw \
+  depth_topic:=/camera/camera/aligned_depth_to_color/image_raw \
+  info_topic:=/camera/camera/color/camera_info
+```
