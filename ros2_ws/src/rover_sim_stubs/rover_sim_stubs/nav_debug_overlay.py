@@ -1,11 +1,12 @@
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
 import rclpy
-from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import Point, PoseArray
 from rclpy.node import Node
+from visualization_msgs.msg import Marker, MarkerArray
+
 from rover_interface.msg import (
     BinPoseObservation,
     BinPoseSmoothed,
@@ -15,7 +16,6 @@ from rover_interface.msg import (
     BlockPoseSmoothed,
     BlockPoseSmoothedArray,
 )
-from visualization_msgs.msg import Marker, MarkerArray
 
 
 @dataclass
@@ -24,6 +24,7 @@ class RawObservation:
     detection_id: int
     frame_id: str
     point: Point
+    timestamp: float
 
 
 class NavDebugOverlay(Node):
@@ -39,6 +40,10 @@ class NavDebugOverlay(Node):
         )
         self.rover_trail_length = int(
             self.declare_parameter("rover_trail_length", 200).value
+        )
+
+        self.observation_timeout_sec = int(
+            self.declare_parameter("observation_timeout_sec", 5.0).value
         )
 
         self.marker_pub = self.create_publisher(
@@ -120,9 +125,7 @@ class NavDebugOverlay(Node):
         if len(self.rover_trail) > self.rover_trail_length:
             self.rover_trail = self.rover_trail[-self.rover_trail_length :]
         if not self._pose_topic_logged:
-            self.get_logger().info(
-                "Overlay rover pose is using /sim/rover_pose"
-            )
+            self.get_logger().info("Overlay rover pose is using /sim/rover_pose")
             self._pose_topic_logged = True
         if not frame_id and not self._empty_pose_frame_warned:
             self.get_logger().warning(
@@ -159,6 +162,7 @@ class NavDebugOverlay(Node):
             source="cv/block_poses",
             frame_id=msg.header.frame_id,
         )
+        now = self.get_clock().now().nanoseconds / 1e9
         for index, observation in enumerate(msg.observations):
             marker_key = (int(observation.color), int(observation.id), index)
             self.raw_block_obs[marker_key] = RawObservation(
@@ -170,6 +174,7 @@ class NavDebugOverlay(Node):
                     observation.pose.position.y,
                     observation.pose.position.z,
                 ),
+                timestamp=now,
             )
 
     def raw_bin_callback(self, msg: BinPoseObservation):
@@ -177,6 +182,7 @@ class NavDebugOverlay(Node):
             source="cv/bin_poses",
             frame_id=msg.header.frame_id,
         )
+        now = self.get_clock().now().nanoseconds / 1e9
         for index, observation in enumerate(msg.observations):
             marker_key = (int(observation.color), int(observation.id), index)
             self.raw_bin_obs[marker_key] = RawObservation(
@@ -188,9 +194,21 @@ class NavDebugOverlay(Node):
                     observation.pose.position.y,
                     observation.pose.position.z,
                 ),
+                timestamp=now,
             )
 
+    def _prune_stale_observations(self):
+        now = self.get_clock().now().nanoseconds / 1e9
+        cutoff = now - self.observation_timeout_sec
+        self.raw_block_obs = {
+            k: v for k, v in self.raw_block_obs.items() if v.timestamp >= cutoff
+        }
+        self.raw_bin_obs = {
+            k: v for k, v in self.raw_bin_obs.items() if v.timestamp >= cutoff
+        }
+
     def publish_markers(self):
+        self._prune_stale_observations()
         markers = MarkerArray()
         markers.markers.append(self._delete_all_marker())
 
@@ -242,7 +260,7 @@ class NavDebugOverlay(Node):
         marker.color.r = 1.0
         marker.color.g = 1.0
         marker.color.b = 1.0
-        marker.color.a = 0.95
+        marker.color.a = 0.3
         return marker
 
     def _trail_marker(self) -> Optional[Marker]:
@@ -535,9 +553,7 @@ class NavDebugOverlay(Node):
             return
 
         yaw = self._current_yaw()
-        summary_parts = [
-            f"map=({rover_xy[0]:.2f}, {rover_xy[1]:.2f}, yaw={yaw:.2f})"
-        ]
+        summary_parts = [f"map=({rover_xy[0]:.2f}, {rover_xy[1]:.2f}, yaw={yaw:.2f})"]
         summary_parts.extend(
             self._distance_summaries(
                 rover_xy=rover_xy,
@@ -595,7 +611,9 @@ class NavDebugOverlay(Node):
         return Point(x=float(x), y=float(y), z=float(z))
 
     @staticmethod
-    def _color_rgba(color_value: int, alpha: float) -> Tuple[float, float, float, float]:
+    def _color_rgba(
+        color_value: int, alpha: float
+    ) -> Tuple[float, float, float, float]:
         color_map = {
             BlockBinColor.BLUE: (0.12, 0.47, 0.96),
             BlockBinColor.RED: (0.92, 0.20, 0.18),
