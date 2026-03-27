@@ -184,7 +184,7 @@ class ControllerNode(Node):
     def explore(self):
         # Tbd whether these happen in the controller or the navigation node
         # ideally should be in nav node
-        self.get_logger().info("Beginning exploration!")
+        # self.get_logger().info("Beginning exploration!")
 
         # First - if we have a target block, move to the Approach Phase
         if self.target_block is not None:
