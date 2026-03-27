@@ -28,25 +28,27 @@ navigation_2/
 └── setup.py
 ```
 
-- navigation.launch.py: Launch all navigation components (controllers, planners, etc.) with a single click and bind them to the lifecycle manager.
-- neo_robot.yaml: Standardize the definitions of the robot's physical radius, maximum speed, obstacle avoidance distance, and behavior tree paths.
-- navigation_service_node.py: Listen for external topics and pass coordinate commands to the Nav2 engine.
-- navigate_through_poses_w_replanning_and_recovery.xml & navigate_to_pose_w_replanning_and_recovery.xml: Behavior tree logic definition.
+- `navigation.launch.py`: Launch all navigation components (controllers, planners, etc.) with a single click and bind them to the lifecycle manager.
+- `neo_robot.yaml`: Standardize the definitions of the robot's physical radius, maximum speed, obstacle avoidance distance, and behavior tree paths.
+- `navigation_service_node.py`: Listen for external topics and pass coordinate commands to the Nav2 engine.
+- `navigate_through_poses_w_replanning_and_recovery.xml` & `navigate_to_pose_w_replanning_and_recovery.xml`: Behavior tree logic definition.
 
 
 ## 3. Edit path in neo_robot.yaml
 Change absolute path of the behavior tree:
-1. Change `default_nav_to_pose_bt_xml` to `default_nav_to_pose_bt_xml: ".../install/navigation_2/share/navigation_2/config/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml"`
-2. Change `default_nav_through_poses_bt_xml: ` to `default_nav_through_poses_bt_xml: ".../install/navigation_2/share/navigation_2/config/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"`
+1. Change `default_nav_to_pose_bt_xml` to `default_nav_to_pose_bt_xml: "<path_to_the_repo>/install/navigation_2/share/navigation_2/config/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml"`
+2. Change `default_nav_through_poses_bt_xml: ` to `default_nav_through_poses_bt_xml: "<path_to_the_repo>/install/navigation_2/share/navigation_2/config/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"`
 
 ## 4. Integration
 - Map topic: /map
 - Odometer topic: /wheel_odom
 - Speed command listener topic: /cmd_vel
 
+
 - Global coordinate system name: map
 - Odometer coordinate system name: odom
 - Robot coordinate system: base_link
+
 
 - Target position topic: /platform_poses
 - Target position message type: geometry_msgs/msg/PoseStamped
