@@ -29,6 +29,11 @@ def generate_launch_description():
         default_value="true",
         description="Run rover_sim_stubs navigation_stub node",
     )
+    run_manipulation_stub_arg = DeclareLaunchArgument(
+        "run_manipulation_stub",
+        default_value="true",
+        description="Run rover_sim_stubs manipulation_stub node",
+    )
     run_smooth_observations_arg = DeclareLaunchArgument(
         "run_smooth_observations",
         default_value="true",
@@ -38,6 +43,11 @@ def generate_launch_description():
         "run_rover_controller",
         default_value="true",
         description="Run rover_controller node",
+    )
+    run_nav_debug_overlay_arg = DeclareLaunchArgument(
+        "run_nav_debug_overlay",
+        default_value="false",
+        description="Run rover_sim_stubs nav_debug_overlay node",
     )
 
     vision_stub = Node(
@@ -54,6 +64,13 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("run_navigation_stub")),
     )
 
+    manipulation_stub = Node(
+        package="rover_sim_stubs",
+        executable="manipulation_stub",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("run_manipulation_stub")),
+    )
+
     smooth_observations = Node(
         package="rover_controller",
         executable="smooth_observations",
@@ -68,16 +85,27 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("run_rover_controller")),
     )
 
+    nav_debug_overlay = Node(
+        package="rover_sim_stubs",
+        executable="nav_debug_overlay",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("run_nav_debug_overlay")),
+    )
+
     return LaunchDescription(
         [
             run_vision_stub_arg,
             run_navigation_stub_arg,
+            run_manipulation_stub_arg,
             run_smooth_observations_arg,
             run_rover_controller_arg,
+            run_nav_debug_overlay_arg,
             rover_sim,
             vision_stub,
             navigation_stub,
+            manipulation_stub,
             smooth_observations,
             rover_controller,
+            nav_debug_overlay,
         ]
     )

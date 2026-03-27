@@ -40,6 +40,12 @@ def generate_launch_description():
     pkg_ros_gz_sim = get_package_share_directory("ros_gz_sim")
     pkg_project_gazebo = get_package_share_directory("rover_gz_bringup")
     pkg_project_worlds = get_package_share_directory("leo_gz_worlds")
+    mycobot_path = get_package_share_directory("mycobot_description")
+    rover_path = get_package_share_directory("rover_description")
+
+    mycobot_base_path = os.path.dirname(mycobot_path)
+    rover_base_path = os.path.dirname(rover_path)
+    gazebo_model_paths = mycobot_base_path + os.pathsep + rover_base_path
 
     # Added to permit the search of other packages for robot description resources
     mycobot_path = get_package_share_directory('mycobot_description')
@@ -97,11 +103,15 @@ def generate_launch_description():
             "/model/platform_red/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
             "/model/platform_blue/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
             "/model/platform_yellow/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
+            "/model/leo_rover/pose@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V",
         ],
         parameters=[
             {
                 "qos_overrides./tf_static.publisher.durability": "transient_local",
             }
+        ],
+        remappings=[
+            ("/model/leo_rover/pose", "/sim/rover_pose"),
         ],
         output="screen",
     )

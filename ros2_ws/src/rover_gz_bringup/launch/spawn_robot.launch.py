@@ -31,7 +31,6 @@ from launch_ros.actions import Node
 
 
 def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
-    pkg_project_description = get_package_share_directory("leo_description")
     robot_ns = context.perform_substitution(namespace)
 
     robot_desc = xacro.process(
@@ -90,8 +89,10 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
             robot_ns + "/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
             robot_ns + "/imu/data_raw@sensor_msgs/msg/Imu[gz.msgs.IMU",
             robot_ns + "/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan",
-            robot_ns + "/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
-            robot_ns + "/depth_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            robot_ns
+            + "/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+            robot_ns
+            + "/depth_camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
             robot_ns + "/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model",
         ],
         parameters=[
@@ -136,7 +137,7 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
         topic_bridge,
         image_bridge,
         depth_cam_rgb,
-        depth_cam_depth
+        depth_cam_depth,
     ]
 
 

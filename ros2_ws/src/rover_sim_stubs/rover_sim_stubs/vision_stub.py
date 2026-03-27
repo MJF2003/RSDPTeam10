@@ -2,14 +2,15 @@ from functools import partial
 from random import gauss
 
 import rclpy
-from geometry_msgs.msg import PointStamped, PoseArray
+from geometry_msgs.msg import Pose, PoseArray
 from rclpy.node import Node
 
 from rover_interface.msg import (
+    BinPose,
     BinPoseObservation,
+    BlockPose,
     BlockBinColor,
     BlockPoseObservation,
-    BlockShape,
 )
 
 # TODO: add publish function for observations
@@ -21,6 +22,9 @@ class VisionStub(Node):
     def __init__(self):
         super().__init__("vision_stub")
         self.get_logger().info("Launching vision stub")
+        self.observation_frame_id = str(
+            self.declare_parameter("observation_frame_id", "map").value
+        )
         self.add_gaussian_noise = bool(
             self.declare_parameter("add_gaussian_noise", True).value
         )
@@ -77,22 +81,32 @@ class VisionStub(Node):
             qos_profile=1,
         )
 
-    def fill_obs_features[T: BlockPoseObservation | BinPoseObservation](
+    def fill_obs_header(
         self,
-        obs: T,
+        obs: BlockPoseObservation | BinPoseObservation,
         msg: PoseArray,
-    ) -> T:
-        "Add the header and pose information to an observation message"
-        obs.position.header.stamp = msg.header.stamp
-        obs.position.header.frame_id = msg.header.frame_id
+    ) -> None:
+        "Add the shared header information to an observation envelope."
+        obs.header.stamp = msg.header.stamp
+        obs.header.frame_id = self.observation_frame_id
+        obs.yolo_fps = 0.0
 
-        # All the objects have their own topics, so
-        # just index into the first element in the array
-        obs.position.point.x = self.apply_noise(msg.poses[0].position.x)  # type: ignore
-        obs.position.point.y = self.apply_noise(msg.poses[0].position.y)  # type: ignore
-        obs.position.point.z = self.apply_noise(msg.poses[0].position.z)  # type: ignore
+    def build_pose(self, msg: PoseArray) -> Pose | None:
+        "Build a noisy pose from the first Gazebo pose array entry."
+        if not msg.poses:
+            self.get_logger().warning("Received empty PoseArray from simulator.")
+            return None
 
-        return obs
+        source_pose = msg.poses[0]
+        pose = Pose()
+        pose.position.x = self.apply_noise(source_pose.position.x)
+        pose.position.y = self.apply_noise(source_pose.position.y)
+        pose.position.z = self.apply_noise(source_pose.position.z)
+        pose.orientation.x = source_pose.orientation.x
+        pose.orientation.y = source_pose.orientation.y
+        pose.orientation.z = source_pose.orientation.z
+        pose.orientation.w = source_pose.orientation.w
+        return pose
 
     def apply_noise(self, value: float) -> float:
         if not self.add_gaussian_noise or self.position_noise_stddev_m == 0.0:
@@ -102,19 +116,55 @@ class VisionStub(Node):
     def block_obs_callback(self, msg: PoseArray, color: int) -> None:
         """Converts a pose message from gazebo into a
         rover_interface-compatible message"""
+        pose = self.build_pose(msg)
+        if pose is None:
+            return
+
         obs = BlockPoseObservation()
-        obs = self.fill_obs_features(obs, msg)
-        obs.shape.shape = BlockShape.CUBE
-        obs.color.color = color
+        self.fill_obs_header(obs, msg)
+
+        detection = BlockPose()
+        detection.id = 0
+        detection.pose = pose
+        detection.confidence = 0.0
+        detection.age = 0
+        detection.missed = 0
+        detection.center_u = 0
+        detection.center_v = 0
+        detection.color = color
+        detection.color_confidence = 0.0
+        detection.color_votes = 0
+        detection.shape_label = "cube"
+        detection.shape_confidence = 0.0
+        detection.shape_votes = 0
+
+        obs.observations.append(detection)  # type: ignore
 
         self.block_publisher.publish(obs)
 
     def bin_obs_callback(self, msg: PoseArray, color: int) -> None:
         """Converts a pose message from gazebo into a
         rover_interface-compatible message"""
+        pose = self.build_pose(msg)
+        if pose is None:
+            return
+
         obs = BinPoseObservation()
-        obs = self.fill_obs_features(obs, msg)
-        obs.color.color = color
+        self.fill_obs_header(obs, msg)
+
+        detection = BinPose()
+        detection.id = 0
+        detection.pose = pose
+        detection.confidence = 0.0
+        detection.age = 0
+        detection.missed = 0
+        detection.center_u = 0
+        detection.center_v = 0
+        detection.color = color
+        detection.color_confidence = 0.0
+        detection.color_votes = 0
+
+        obs.observations.append(detection)  # type: ignore
 
         self.bin_publisher.publish(obs)
 

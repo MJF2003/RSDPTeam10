@@ -4,39 +4,30 @@ import time
 from typing import Optional
 
 import rclpy
-from geometry_msgs.msg import PoseArray, Twist
+from geometry_msgs.msg import PoseArray
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
-from rover_interface.action import NavigateToPos
+from rover_interface.action import ManipulateBlock
 
 
-class NavigationStub(Node):
+class ManipulationStub(Node):
     def __init__(self):
-        super().__init__("navigation_stub")
+        super().__init__("manipulation_stub")
 
-        self.approach_threshold_m = float(
-            self.declare_parameter("approach_threshold_m", 0.5).value
+        self.manipulation_radius_m = float(
+            self.declare_parameter("manipulation_radius_m", 0.75).value
         )
-        self.max_linear_speed_mps = float(
-            self.declare_parameter("max_linear_speed_mps", 0.30).value
+        self.manipulation_duration_sec = float(
+            self.declare_parameter("manipulation_duration_sec", 1.0).value
         )
-        self.max_angular_speed_radps = float(
-            self.declare_parameter("max_angular_speed_radps", 1.20).value
-        )
-        self.linear_kp = float(self.declare_parameter("linear_kp", 0.50).value)
-        self.angular_kp = float(self.declare_parameter("angular_kp", 1.50).value)
-        self.heading_tolerance_rad = float(
-            self.declare_parameter("heading_tolerance_rad", 0.20).value
-        )
-        odom_timeout_sec = float(self.declare_parameter("odom_timeout_sec", 1.0).value)
         self.pose_timeout_sec = float(
-            self.declare_parameter("ground_truth_timeout_sec", odom_timeout_sec).value
+            self.declare_parameter("ground_truth_timeout_sec", 1.0).value
         )
         self.goal_timeout_sec = float(
-            self.declare_parameter("goal_timeout_sec", 45.0).value
+            self.declare_parameter("goal_timeout_sec", 5.0).value
         )
         self.control_period_sec = float(
             self.declare_parameter("control_period_sec", 0.05).value
@@ -51,7 +42,6 @@ class NavigationStub(Node):
         self._unexpected_frame_warned = False
 
         self._pose_callback_group = ReentrantCallbackGroup()
-        self.cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
         self.create_subscription(
             PoseArray,
             "/sim/rover_pose",
@@ -62,22 +52,32 @@ class NavigationStub(Node):
 
         self.action_server = ActionServer(
             self,
-            NavigateToPos,
-            "/navigate_to_pos",
+            ManipulateBlock,
+            "/manipulate_block",
             execute_callback=self.execute_callback,
             goal_callback=self.goal_callback,
             cancel_callback=self.cancel_callback,
         )
 
         self.get_logger().info(
-            f"Navigation stub ready on /navigate_to_pos "
-            f"(approach_threshold_m={self.approach_threshold_m:.2f}, "
+            f"Manipulation stub ready on /manipulate_block "
+            f"(manipulation_radius_m={self.manipulation_radius_m:.2f}, "
             f"goal_frame='{self.goal_frame}')"
         )
 
-    def goal_callback(self, goal_request: NavigateToPos.Goal):
+    def goal_callback(self, goal_request: ManipulateBlock.Goal):
         frame_id = goal_request.target_pos.header.frame_id.strip()
         target = goal_request.target_pos.point
+
+        if goal_request.operation not in (
+            ManipulateBlock.Goal.GRASP,
+            ManipulateBlock.Goal.DEPOSIT,
+        ):
+            self.get_logger().warn(
+                f"Rejecting goal with unsupported operation "
+                f"{goal_request.operation}."
+            )
+            return GoalResponse.REJECT
 
         if frame_id != self.goal_frame:
             self.get_logger().warn(
@@ -100,81 +100,78 @@ class NavigationStub(Node):
         target = goal_handle.request.target_pos.point
         target_x = float(target.x)
         target_y = float(target.y)
+        operation = int(goal_handle.request.operation)
+        operation_name = self._operation_name(operation)
 
         self.get_logger().info(
-            f"Executing navigate goal to target at ({target_x:.3f}, {target_y:.3f})"
+            f"Executing {operation_name} goal at "
+            f"({target_x:.3f}, {target_y:.3f})"
         )
 
-        result = NavigateToPos.Result()
-        feedback = NavigateToPos.Feedback()
+        result = ManipulateBlock.Result()
+        feedback = ManipulateBlock.Feedback()
         start_time = self.get_clock().now()
 
         while rclpy.ok():
             if goal_handle.is_cancel_requested:
-                self._publish_stop()
                 goal_handle.canceled()
                 result.success = False
-                result.final_distance = float("inf")
                 result.message = "Goal canceled."
                 return result
 
             pose = self._get_current_pose()
-            if pose is None:
-                self._publish_stop()
-                goal_handle.abort()
-                result.success = False
-                result.final_distance = float("inf")
-                result.message = "No recent global pose received."
-                return result
-
-            x, y, yaw = pose
-            dx = target_x - x
-            dy = target_y - y
-            distance = math.hypot(dx, dy)
-
-            feedback.distance_remaining = float(distance)
-            goal_handle.publish_feedback(feedback)
-
-            if distance <= self.approach_threshold_m:
-                self._publish_stop()
-                goal_handle.succeed()
-                result.success = True
-                result.final_distance = float(distance)
-                result.message = "Reached approach threshold."
-                return result
-
             elapsed_sec = (self.get_clock().now() - start_time).nanoseconds / 1e9
+
+            if pose is None:
+                feedback.current_stage = "waiting_for_pose"
+                goal_handle.publish_feedback(feedback)
+                if elapsed_sec >= self.goal_timeout_sec:
+                    goal_handle.abort()
+                    result.success = False
+                    result.message = "No recent global pose received."
+                    return result
+                time.sleep(self.control_period_sec)
+                continue
+
+            x, y, _ = pose
+            distance = math.hypot(target_x - x, target_y - y)
+            if distance <= self.manipulation_radius_m:
+                break
+
+            feedback.current_stage = "checking_range"
+            goal_handle.publish_feedback(feedback)
             if elapsed_sec >= self.goal_timeout_sec:
-                self._publish_stop()
                 goal_handle.abort()
                 result.success = False
-                result.final_distance = float(distance)
-                result.message = "Timed out before reaching goal."
-                return result
-
-            target_heading = math.atan2(dy, dx)
-            heading_error = self._normalize_angle(target_heading - yaw)
-
-            twist = Twist()
-            twist.angular.z = self._clamp(
-                self.angular_kp * heading_error,
-                -self.max_angular_speed_radps,
-                self.max_angular_speed_radps,
-            )
-
-            if abs(heading_error) < self.heading_tolerance_rad:
-                twist.linear.x = self._clamp(
-                    self.linear_kp * distance,
-                    0.0,
-                    self.max_linear_speed_mps,
+                result.message = (
+                    f"Timed out waiting to enter manipulation range "
+                    f"({distance:.3f} m away)."
                 )
-
-            self.cmd_vel_pub.publish(twist)
+                return result
             time.sleep(self.control_period_sec)
 
-        self._publish_stop()
+        feedback.current_stage = f"executing_{operation_name}"
+        goal_handle.publish_feedback(feedback)
+        execute_start = time.monotonic()
+
+        while rclpy.ok():
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                result.success = False
+                result.message = "Goal canceled."
+                return result
+
+            if time.monotonic() - execute_start >= self.manipulation_duration_sec:
+                feedback.current_stage = "complete"
+                goal_handle.publish_feedback(feedback)
+                goal_handle.succeed()
+                result.success = True
+                result.message = f"{operation_name.capitalize()} completed."
+                return result
+
+            time.sleep(self.control_period_sec)
+
         result.success = False
-        result.final_distance = float("inf")
         result.message = "ROS shutdown during goal execution."
         return result
 
@@ -202,18 +199,11 @@ class NavigationStub(Node):
                 )
                 self._unexpected_frame_warned = True
 
-        yaw = self._yaw_from_quaternion(
-            pose_msg.orientation.x,
-            pose_msg.orientation.y,
-            pose_msg.orientation.z,
-            pose_msg.orientation.w,
-        )
-
         with self._latest_pose_lock:
             self._latest_pose = (
                 float(pose_msg.position.x),
                 float(pose_msg.position.y),
-                float(yaw),
+                0.0,
             )
             self._latest_pose_time = self.get_clock().now()
 
@@ -231,25 +221,15 @@ class NavigationStub(Node):
 
         return pose
 
-    def _publish_stop(self):
-        self.cmd_vel_pub.publish(Twist())
-
     @staticmethod
-    def _normalize_angle(angle: float) -> float:
-        return math.atan2(math.sin(angle), math.cos(angle))
-
-    @staticmethod
-    def _clamp(value: float, low: float, high: float) -> float:
-        return max(low, min(high, value))
-
-    @staticmethod
-    def _yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
-        siny_cosp = 2.0 * (w * z + x * y)
-        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
-        return math.atan2(siny_cosp, cosy_cosp)
+    def _operation_name(operation: int) -> str:
+        if operation == ManipulateBlock.Goal.GRASP:
+            return "grasp"
+        if operation == ManipulateBlock.Goal.DEPOSIT:
+            return "deposit"
+        return f"unknown({operation})"
 
     def destroy_node(self):
-        self._publish_stop()
         self.action_server.destroy()
         super().destroy_node()
 
@@ -257,7 +237,7 @@ class NavigationStub(Node):
 def main():
     try:
         rclpy.init()
-        node = NavigationStub()
+        node = ManipulationStub()
         executor = MultiThreadedExecutor(num_threads=2)
         executor.add_node(node)
         executor.spin()
