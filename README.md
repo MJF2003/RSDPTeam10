@@ -3,12 +3,14 @@ This package is a robot navigation package developed based on the ROS 2 Nav2 (Na
 
 # Installation of Navigation Node
 ## 1. Packages
+```bash
 sudo apt update
 sudo apt install ros-jazzy-navigation2
 sudo apt install ros-jazzy-nav2-bringup
 sudo apt install ros-jazzy-nav2-simple-commander
 sudo apt install ros-jazzy-turtlebot3-msgs
 sudo apt install ros-jazzy-tf2-geometry-msgs
+```
 
 ## 2. Model Weights
 ```bash
