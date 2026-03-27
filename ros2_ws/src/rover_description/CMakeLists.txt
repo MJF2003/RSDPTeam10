@@ -26,11 +26,8 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  DIRECTORY urdf meshes 
+  DIRECTORY urdf meshes
   DESTINATION share/${PROJECT_NAME}
 )
-
-ament_environment_hooks("${CMAKE_CURRENT_SOURCE_DIR}/hooks/gz_sim_resource_path.sh")
-ament_environment_hooks("${CMAKE_CURRENT_SOURCE_DIR}/hooks/gz_sim_resource_path.dsv.in")
 
 ament_package()

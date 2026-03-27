@@ -5,6 +5,8 @@
   <!-- Arguments / Parameters -->
   <!-- ===================== -->
 
+  <xacro:arg name="use_gazebo" default="false"/>
+
   <xacro:arg name="arm_xyz" default="0.0880 0 0.0585"/>
   <xacro:arg name="arm_rpy" default="0 0 0"/>
 
@@ -14,19 +16,20 @@
   <xacro:arg name="camera_xyz" default="0.1746 0 0.0906"/>
   <xacro:arg name="camera_rpy" default="0 0.4712 0"/>
 
+  <xacro:arg name="robot_ns" default=""/>
+
   <!-- ===================== -->
   <!-- Include LeoRover      -->
   <!-- ===================== -->
 
-  <xacro:arg name="fixed" default="false"/>
-  <xacro:arg name="robot_ns" default=""/>
-  <xacro:arg name="mecanum_wheels" default="false"/>
-
   <xacro:include filename="$(find leo_description)/urdf/macros.xacro"/>
 
-  <xacro:leo_sim robot_ns="$(arg robot_ns)"
-                 fixed="$(arg fixed)"
-                 mecanum_wheels="$(arg mecanum_wheels)"/>
+  <xacro:if value="$(arg use_gazebo)">
+    <xacro:leo_sim />
+  </xacro:if>
+  <xacro:unless value="$(arg use_gazebo)">
+    <xacro:leo />
+  </xacro:unless>
 
   <!-- ===================== -->
   <!-- Include myCobot280pi  -->
@@ -45,7 +48,58 @@
         <mesh filename="package://rover_description/meshes/lidar.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.0375" length="0.050"/>
+      </geometry>
+      <origin xyz="0 0 -0.025" rpy="0 0 0" />
+    </collision>
+    <inertial>
+      <mass value="0.190"/>
+      <inertia ixx="0.000095" ixy="0" ixz="0" 
+               iyy="0.000095" iyz="0" 
+               izz="0.000137"/>
+    </inertial>
   </link>
+
+
+<!-- Conditionally boot the Gazebo plugin for lidar --> 
+  <xacro:if value="$(arg use_gazebo)">
+    <gazebo reference="lidar_link">
+      <sensor name="rplidar_a2m12" type="gpu_lidar">
+        <always_on>true</always_on>
+        <visualize>true</visualize> 
+        <update_rate>10.0</update_rate>
+        <topic>scan</topic>
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>1600</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.14159265</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>0.01</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.20</min>
+            <max>12.0</max>
+            <resolution>0.001</resolution> </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </ray>
+      </sensor>
+    </gazebo>
+  </xacro:if>
 
   <link name="depth_camera_link">
     <visual>
@@ -53,7 +107,49 @@
         <mesh filename="package://rover_description/meshes/camera.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </visual>
+    <collision>
+      <geometry>
+        <box size="0.09 0.025 0.025" />
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 0 -1.5708" />
+    </collision>
+    <inertial>
+      <mass value="0.072"/>
+      <inertia ixx="0.000052" ixy="0" ixz="0" iyy="0.000007" iyz="0" izz="0.000052"/>
+    </inertial>
   </link>
+
+  <!-- Required since camera frame is different axis to the model geometry -->
+  <link name="depth_camera_optical_frame"/>
+
+<!-- Conditionally boot the Gazebo plugin for a depth camera --> 
+  <xacro:if value="$(arg use_gazebo)">
+    <gazebo reference="depth_camera_link">
+      <sensor name="depth_camera_sensor" type="rgbd_camera">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>30.0</update_rate>
+        <topic>depth_camera</topic>
+        <gz_frame_id>depth_camera_optical_frame</gz_frame_id>
+        <camera name="d435i">
+          <horizontal_fov>1.204</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+            <format>R8G8B8</format> 
+          </image>
+          <clip>
+            <near>0.28</near>
+            <far>10.0</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev> </noise>
+        </camera>
+      </sensor>
+    </gazebo>
+  </xacro:if>
 
   <!-- ===================== -->
   <!-- Fixed Joints          -->
@@ -78,6 +174,13 @@
     <parent link="base_link"/>
     <child link="depth_camera_link"/>
     <origin xyz="$(arg camera_xyz)" rpy="$(arg camera_rpy)"/>
+  </joint>
+
+  <!-- & associated optical frame -->
+  <joint name="depth_camera_optical_joint" type="fixed">
+    <parent link="depth_camera_link"/>
+    <child link="depth_camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
   </joint>
 
 </robot>
