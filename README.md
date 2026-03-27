@@ -53,23 +53,3 @@ Target position message type: geometry_msgs/msg/PoseStamped
 ```bash
 ros2 launch navigation_2 navigation.launch.py use_sim_time:=false
 ```
-
-To run the node directly, run
-```bash
-ros2 run rsdp_perception vision_node
-```
-
-You can override a few useful `vision_node` parameters from launch without editing code. For example:
-```bash
-ros2 launch rsdp_perception vision.launch.py conf:=0.35 vote_window:=6 min_votes_to_output:=2
-```
-
-The launch file also exposes the subscribed topics and RealSense sync/aligned-depth settings:
-```bash
-ros2 launch rsdp_perception vision.launch.py \
-  align_depth.enable:=true \
-  enable_sync:=true \
-  color_topic:=/camera/camera/color/image_raw \
-  depth_topic:=/camera/camera/aligned_depth_to_color/image_raw \
-  info_topic:=/camera/camera/color/camera_info
-```
