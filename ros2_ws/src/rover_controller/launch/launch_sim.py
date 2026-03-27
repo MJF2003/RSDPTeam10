@@ -5,14 +5,30 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description import LaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
     pkg_bringup = get_package_share_directory("rover_gz_bringup")
+    pkg_perception = get_package_share_directory("rsdp_perception")
     pkg_slam = get_package_share_directory("rover_slam")
     robot_ns = LaunchConfiguration("robot_ns")
+
+    def namespaced_topic(topic_suffix):
+        return PythonExpression(
+            [
+                "'/' + '",
+                robot_ns,
+                "' + '",
+                topic_suffix,
+                "' if '",
+                robot_ns,
+                "' else '",
+                topic_suffix,
+                "'",
+            ]
+        )
 
     rover_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -42,6 +58,11 @@ def generate_launch_description():
         "run_vision_stub",
         default_value="true",
         description="Run rover_sim_stubs vision_stub node",
+    )
+    run_vision_true_arg = DeclareLaunchArgument(
+        "run_vision_true",
+        default_value="false",
+        description="Run rsdp_perception vision.launch.py against simulated camera topics",
     )
     run_navigation_stub_arg = DeclareLaunchArgument(
         "run_navigation_stub",
@@ -79,11 +100,35 @@ def generate_launch_description():
         default_value="true",
         description="run rover_slam to convert mocked /scan to /map.",
     )
+
+    vision_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_perception, "launch", "vision.launch.py")
+        ),
+        launch_arguments={
+            "run_realsense_node": "false",
+            "color_topic": namespaced_topic("/depth_camera/image"),
+            "depth_topic": namespaced_topic("/depth_camera/depth_image"),
+            "info_topic": namespaced_topic("/depth_camera/camera_info"),
+        }.items(),
+        condition=IfCondition(LaunchConfiguration("run_vision_true")),
+    )
+
     vision_stub = Node(
         package="rover_sim_stubs",
         executable="vision_stub",
         output="screen",
-        condition=IfCondition(LaunchConfiguration("run_vision_stub")),
+        condition=IfCondition(
+            PythonExpression(
+                [
+                    "'",
+                    LaunchConfiguration("run_vision_stub"),
+                    "'.lower() in ('true', '1') and '",
+                    LaunchConfiguration("run_vision_true"),
+                    "'.lower() not in ('true', '1')",
+                ]
+            )
+        ),
     )
 
     navigation_stub = Node(
@@ -135,6 +180,7 @@ def generate_launch_description():
         [
             robot_ns_arg,
             run_vision_stub_arg,
+            run_vision_true_arg,
             run_navigation_stub_arg,
             run_manipulation_stub_arg,
             run_smooth_observations_arg,
@@ -144,6 +190,7 @@ def generate_launch_description():
             run_slam_node_arg,
             rover_sim,
             slam_launch,
+            vision_launch,
             vision_stub,
             navigation_stub,
             manipulation_stub,
