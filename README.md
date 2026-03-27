@@ -39,17 +39,18 @@ The sim exposes stub modules which do basic actions - like a vision stub which g
 
 Check the launch file for the full list of launch arguments.
 
-## Launch the robot for autonomous exploration and mapping
-First, synchronize the robot’s internal clock with the computer (or NUC) clock:
+## Launch the SLAM Node
+The SLAM Node consumes a laser scan to produce a map on the `/map` topic. You can run the node itself by running 
 ```bash
->ssh pi@10.0.0.1
+ros2 launch rover_slam launch_slam.py
 ```
-password:raspberry
+
+To also launch `rviz` and the real-world lidar (check permissions below) along it, specify the launch arguments
 ```bash
-sudo date -u -s "2026-02-20 12:15:00"
+ros2 launch rover_slam slam_launch.py launch_rviz:=true launch_rplidar:=true
 ```
-Change to the current time.
-Open a terminal in the SLAM_2D_Learn folder
+
+To run the RPLidar A2M12 (ie. the real lidar) you need to set the permissions so the computer can communicate with it using this command.
 ```bash
-source install setup.bash
-ros2 launch leo_explore auto_slam_wander.launch.py    #Launch the leo rover for autonomous exploration and mapping
+sudo chmod 777 /dev/ttyUSB0
+```
