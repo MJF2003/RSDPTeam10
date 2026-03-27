@@ -40,20 +40,18 @@ Change absolute path of the behavior tree:
 2. Change `default_nav_through_poses_bt_xml: ` to `default_nav_through_poses_bt_xml: "<path_to_the_repo>/install/navigation_2/share/navigation_2/config/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"`
 
 ## 4. Integration
-- Map topic: /map
+1.- Map topic: /map
 - Odometer topic: /wheel_odom
 - Speed command listener topic: /cmd_vel
 
-
-- Global coordinate system name: map
+2.- Global coordinate system name: map
 - Odometer coordinate system name: odom
 - Robot coordinate system: base_link
 
-
-- Target position topic: /platform_poses
+3.- Target position topic: /platform_poses
 - Target position message type: geometry_msgs/msg/PoseStamped
 
-## 5. Running the Node
+# Running the Node
 ```bash
 ros2 launch navigation_2 navigation.launch.py use_sim_time:=false
 ```
