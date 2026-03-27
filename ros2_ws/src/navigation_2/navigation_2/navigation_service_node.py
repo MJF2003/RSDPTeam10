@@ -1,11 +1,8 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.action import ActionServer, CancelResponse, GoalResponse
-from geometry_msgs.msg import PoseStamped, Pose
+from rclpy.action import ActionServer
+from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
-
-import tf2_ros
-from tf2_geometry_msgs import do_transform_pose
 
 from rover_interface.action import NavigateToPos
 
@@ -13,94 +10,85 @@ class NavigationServiceNode(Node):
     def __init__(self):
         super().__init__('navigation_service_node')
         
-        # 1. Initialize Nav2 controller
+        # Initialize Nav2 controller
         # 1. 初始化 Nav2 控制器 
         self.navigator = BasicNavigator()
         
-        # 2. Initialize TF2 listener for handling camera-to-map transformations
-        # 2. 初始化 TF2 监听器，用于处理相机到地图的转换 
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-        
-        # 3. Initialize Action Server
-        # 3. 初始化 Action Server
-        # 名称必须为 'navigation_stub' 以匹配 rover_controller.py 的请求
+        # Initialize Action Server (waiting for goals sent by code)
+        # 2. 初始化 Action Server (等待代码发送的目标)
         self._action_server = ActionServer(
             self,
             NavigateToPos,
             'navigate_to_block', 
             self.execute_callback)
+            
+        # Add testing tool: Listen to target points clicked in the RViz interface
+        # 3. 增加实体测试利器：监听 RViz 界面鼠标点击的目标
+        self.rviz_goal_sub = self.create_subscription(
+            PoseStamped, 
+            '/goal_pose', 
+            self.rviz_goal_callback, 
+            10)
         
-        self.get_logger().info('Navigation service node started, supporting real-time coordinate transformation, waiting for goals...')
+        self.get_logger().info('Physical robot navigation node started!')
+        self.get_logger().info('You can send targets via Action or use "2D Goal Pose" in RViz!')
+
+    def rviz_goal_callback(self, msg):
+        # Process target points from RViz mouse clicks
+        # 处理来自 RViz 鼠标点击的目标
+        self.get_logger().info(f'📍 Received RViz click goal: x={msg.pose.position.x:.2f}, y={msg.pose.position.y:.2f}')
+        self.navigator.goToPose(msg)
 
     async def execute_callback(self, goal_handle):
-        """
-        Action 执行主逻辑
-        """
-        # 获取 Simulation 组发送的 PointStamped 目标
-        request_msg = goal_handle.request.target_pos 
-        source_frame = request_msg.header.frame_id
-        target_frame = 'map'
-        
-        self.get_logger().info(f'Received coordinates, source frame: {source_frame}')
+        # Process Action targets from simulation or control code
+        # 处理来自 Simulation / 控制代码的 Action 目标
+        request_point = goal_handle.request.target_pos
+        self.get_logger().info(f'📍 Received Action navigation request, frame_id: {request_point.header.frame_id}')
 
-        # 将 PointStamped 转换为 Pose 以便进行 TF 转换
-        target_pose = Pose()
-        target_pose.position = request_msg.point
-        target_pose.orientation.w = 1.0 # 默认朝向
-        
         try:
-            # A. Wait for and retrieve the latest coordinate transformation
-            # A. 等待并获取最新的坐标变换关系 
-            # lookup_transform automatically finds the transform chain: source_frame -> ... -> base_link -> odom -> map
-            # lookup_transform 会自动查找变换链：source_frame -> ... -> base_link -> odom -> map
-            now = rclpy.time.Time()
-            transform = self.tf_buffer.lookup_transform(
-                target_frame,
-                source_frame,
-                now,
-                timeout=rclpy.duration.Duration(seconds=1.0))
+            # Physical robots usually send targets directly in the map coordinate system
+            # 实体车通常直接在 map 坐标系下发送目标
+            goal_pose = PoseStamped()
+            goal_pose.header.frame_id = 'map'
+            goal_pose.header.stamp = self.get_clock().now().to_msg()
             
-            # B. Execute coordinate transformation
-            # B. 执行坐标转换 
-            map_pose = do_transform_pose(target_pose, transform)
+            goal_pose.pose.position.x = request_point.point.x
+            goal_pose.pose.position.y = request_point.point.y
+            goal_pose.pose.position.z = 0.0
+            
+            # Default orientation
+            # 默认朝向
+            goal_pose.pose.orientation.w = 1.0
 
-            # C. Construct the final goal point to be sent to Nav2
-            # C. 构建发送给 Nav2 的最终目标点 
-            nav_goal = PoseStamped()
-            nav_goal.header.frame_id = target_frame
-            nav_goal.header.stamp = self.get_clock().now().to_msg()
-            nav_goal.pose = map_pose
-
-            self.get_logger().info(f'Transformation successful: x={source_frame} -> map')
-
-            # D. Send navigation command
-            # D. 发送导航指令 
-            self.navigator.goToPose(nav_goal)
-
-            # E. Loop to monitor progress
-            # E. 循环监控进度 
-            feedback_msg = NavigateToPos.Feedback()
+            # Start navigation
+            # 开始导航
+            self.navigator.goToPose(goal_pose)
+            
+            # Continuous feedback loop
+            # 持续反馈循环
             while not self.navigator.isTaskComplete():
+                feedback = NavigateToPos.Feedback()
                 nav_feedback = self.navigator.getFeedback()
                 if nav_feedback:
-                    feedback_msg.distance_remaining = nav_feedback.distance_remaining
-                    goal_handle.publish_feedback(feedback_msg)
-                    self.get_logger().info(f'Distance remaining: {feedback_msg.distance_remaining:.2f} meters', throttle_duration_sec=1.0)
+                    feedback.distance_remaining = nav_feedback.distance_remaining
+                    goal_handle.publish_feedback(feedback)
                 
-                rclpy.spin_once(self, timeout_sec=0.1)
+                # Use asynchronous sleep to avoid blocking
+                # 使用异步睡眠避免阻塞
+                await rclpy.clock.Clock().sleep_for(rclpy.duration.Duration(seconds=0.1))
 
-            # F. Check final result
-            # F. 检查最终结果 
+            # Check final result
+            # 检查最终结果 
             nav_result = self.navigator.getResult()
             result = NavigateToPos.Result()
 
             final_feedback = self.navigator.getFeedback()
             result.final_distance = final_feedback.distance_remaining if final_feedback else 0.0
+            
             if nav_result == TaskResult.SUCCEEDED:
                 result.success = True
                 result.message = "Navigation Succeeded"
-                self.get_logger().info('✅ Successfully arrived at the goal area!')
+                self.get_logger().info('✅ Successfully reached the goal!')
                 goal_handle.succeed()
             else:
                 result.success = False
@@ -110,8 +98,7 @@ class NavigationServiceNode(Node):
             return result
 
         except Exception as e:
-            self.get_logger().error(f'Unable to complete coordinate transformation: {str(e)}')
-            self.get_logger().warn('Please confirm if SLAM is running (check for map frame) and if camera TF is being published')
+            self.get_logger().error(f'Exception during navigation: {str(e)}')
             goal_handle.abort()
             return NavigateToPos.Result(success=False, message=str(e))
 
