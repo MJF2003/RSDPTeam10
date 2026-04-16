@@ -48,10 +48,27 @@ Change absolute path of the behavior tree:
 - Odometer coordinate system name: odom
 - Robot coordinate system: base_link
 
-- Target position topic: /platform_poses
-- Target position message type: geometry_msgs/msg/PoseStamped
-
 # Running the Node
 ```bash
-ros2 launch navigation_2 navigation.launch.py use_sim_time:=false
+# Terminal1
+ ros2 launch rover_controller launch_sim.py run_vision_stub:=false run_navigation_stub:=false run_smooth_observations:=false run_rover_controller:=true
 ```
+```bash
+# Terminal2
+ros2 launch rover_slam slam_launch.py use_sim_time:=true
+```
+```bash
+# Terminal3
+ros2 launch navigation_2 navigation.launch.py use_sim_time:=true
+```
+
+Next, you can launch RViz and send the target point
+```bash
+Terminal4
+ros2 run rviz2 rviz2
+```
+```bash
+Terminal4
+ros2 action send_goal /navigate_to_block rover_interface/action/NavigateToPos "{target_pos: {header: {frame_id: 'map'}, point: {x: 3.0, y: 0.0, z: 0.0}}}
+```
+
