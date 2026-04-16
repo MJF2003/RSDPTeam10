@@ -64,11 +64,11 @@ ros2 launch navigation_2 navigation.launch.py use_sim_time:=true
 
 Next, you can launch RViz and send the target point
 ```bash
-Terminal4
+# Terminal4
 ros2 run rviz2 rviz2
 ```
 ```bash
-Terminal4
+# Terminal5
 ros2 action send_goal /navigate_to_block rover_interface/action/NavigateToPos "{target_pos: {header: {frame_id: 'map'}, point: {x: 3.0, y: 0.0, z: 0.0}}}
 ```
 
