@@ -9,7 +9,6 @@ def generate_launch_description():
     nav_dir = get_package_share_directory('navigation_2')
     
     # Default configuration file path
-    # 默认参数文件路径
     default_params_file = os.path.join(nav_dir, 'config', 'neo_robot.yaml')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
@@ -17,7 +16,6 @@ def generate_launch_description():
     autostart = LaunchConfiguration('autostart')
 
     # List of Lifecycle Milestones
-    # 生命周期节点列表
     lifecycle_nodes = ['controller_server', 
                        'planner_server', 
                        'behavior_server', 
