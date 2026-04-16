@@ -3,6 +3,8 @@ from rclpy.node import Node
 from rclpy.action import ActionServer
 from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
+import asyncio
+import time
 
 from rover_interface.action import NavigateToPos
 
@@ -40,60 +42,42 @@ class NavigationServiceNode(Node):
         self.navigator.goToPose(msg)
 
     async def execute_callback(self, goal_handle):
-        # Process Action targets from simulation or control code
-        # 处理来自 Simulation / 控制代码的 Action 目标
         request_point = goal_handle.request.target_pos
         self.get_logger().info(f'📍 Received Action navigation request, frame_id: {request_point.header.frame_id}')
 
         try:
-            # Physical robots usually send targets directly in the map coordinate system
-            # 实体车通常直接在 map 坐标系下发送目标
             goal_pose = PoseStamped()
             goal_pose.header.frame_id = 'map'
             goal_pose.header.stamp = self.get_clock().now().to_msg()
-            
             goal_pose.pose.position.x = request_point.point.x
             goal_pose.pose.position.y = request_point.point.y
             goal_pose.pose.position.z = 0.0
-            
-            # Default orientation
-            # 默认朝向
             goal_pose.pose.orientation.w = 1.0
 
-            # Start navigation
-            # 开始导航
             self.navigator.goToPose(goal_pose)
             
-            # Continuous feedback loop
-            # 持续反馈循环
             while not self.navigator.isTaskComplete():
                 feedback = NavigateToPos.Feedback()
                 nav_feedback = self.navigator.getFeedback()
                 if nav_feedback:
                     feedback.distance_remaining = nav_feedback.distance_remaining
                     goal_handle.publish_feedback(feedback)
-                
-                # Use asynchronous sleep to avoid blocking
-                # 使用异步睡眠避免阻塞
-                await rclpy.clock.Clock().sleep_for(rclpy.duration.Duration(seconds=0.1))
 
-            # Check final result
-            # 检查最终结果 
+                time.sleep(0.1) 
+
             nav_result = self.navigator.getResult()
             result = NavigateToPos.Result()
 
-            final_feedback = self.navigator.getFeedback()
-            result.final_distance = final_feedback.distance_remaining if final_feedback else 0.0
-            
+            final_fb = self.navigator.getFeedback()
+            result.final_distance = float(final_fb.distance_remaining) if final_fb else 0.0
+
             if nav_result == TaskResult.SUCCEEDED:
                 result.success = True
-                result.message = "Navigation Succeeded"
-                self.get_logger().info('✅ Successfully reached the goal!')
+                result.message = "Goal Reached!"
                 goal_handle.succeed()
             else:
                 result.success = False
-                result.message = "Navigation Failed or Canceled"
-                self.get_logger().error('❌ Navigation failed')
+                result.message = f"Nav Failed with status: {nav_result}"
                 goal_handle.abort()
             return result
 
