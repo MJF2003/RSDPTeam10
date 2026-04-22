@@ -56,10 +56,24 @@ def generate_launch_description():
             {
                 'scan_topic': '/scan',
                 'cmd_vel_topic': '/cmd_vel',
-                'forward_speed': 0.12,
-                'turn_speed': 0.80,
-                'safe_dist': 0.60,
+                'forward_speed': 0.09,
+                'min_speed': 0.035,
+                'max_turn_speed': 0.85,
+                'safe_dist': 0.32,
+                'slow_dist': 0.55,
+                'emergency_dist': 0.20,
                 'robot_stop_timeout': 0.50,
+                'angular_sign': -1.0,
+                'local_angle_range_deg': 100.0,
+                'goal_bias_deg': 18.0,
+                'gap_window_deg': 12.0,
+                'target_smooth_alpha': 0.68,
+                'emergency_turn_hold': 0.45,
+                'max_considered_range': 3.5,
+                'commit_turn_hold': 1.00,
+                'commit_angle_deg': 24.0,
+                'commit_score_bias': 0.35,
+                'front_release_margin': 0.10,
             }
         ]
     )
