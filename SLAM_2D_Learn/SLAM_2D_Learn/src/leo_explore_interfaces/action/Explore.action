@@ -1,0 +1,13 @@
+float32 max_runtime_sec
+bool run_until_cancelled
+---
+bool success
+string message
+float32 elapsed_time_sec
+string final_mode
+---
+string current_mode
+float32 front
+float32 left_open_score
+float32 right_open_score
+float32 elapsed_time_sec
