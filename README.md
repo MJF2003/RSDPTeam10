@@ -69,6 +69,6 @@ ros2 run rviz2 rviz2
 ```
 ```bash
 # Terminal5
-ros2 action send_goal /navigate_to_block rover_interface/action/NavigateToPos "{target_pos: {header: {frame_id: 'map'}, point: {x: 3.0, y: 0.0, z: 0.0}}}
+ros2 action send_goal /navigate_to_block rover_interface/action/NavigateToPos "{target_pos: {header: {frame_id: 'map'}, point: {x: 3.0, y: 0.0, z: 0.0}}}"
 ```
 
