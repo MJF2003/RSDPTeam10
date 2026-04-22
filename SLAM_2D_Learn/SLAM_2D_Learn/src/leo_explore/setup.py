@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'wander = leo_explore.wander:main',
+            'explore_action_server = leo_explore.explore_action_server:main',
         ],
     },
 )
