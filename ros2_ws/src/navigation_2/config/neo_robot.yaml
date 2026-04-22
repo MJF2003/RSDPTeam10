@@ -69,12 +69,12 @@ controller_server:
       short_circuit_trajectory_evaluation: True
       stateful: True
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 2.0
-      PathAlign.scale: 10.0
+      BaseObstacle.scale: 10.0
+      PathAlign.scale: 5.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 10.0
       GoalAlign.forward_point_distance: 0.1
-      PathDist.scale: 10.0
+      PathDist.scale: 5.0
       GoalDist.scale: 20.0
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
@@ -97,8 +97,8 @@ local_costmap:
     plugins: ["voxel_layer", "inflation_layer"]
     inflation_layer:
       plugin: "nav2_costmap_2d::InflationLayer"
-      cost_scaling_factor: 10.0
-      inflation_radius: 1.0
+      cost_scaling_factor: 3.0
+      inflation_radius: 0.3
     voxel_layer:
       plugin: "nav2_costmap_2d::VoxelLayer"
       enabled: True
@@ -154,7 +154,7 @@ global_costmap:
     inflation_layer:
       plugin: "nav2_costmap_2d::InflationLayer"
       cost_scaling_factor: 3.0
-      inflation_radius: 0.8
+      inflation_radius: 0.3
 
 planner_server:
   ros__parameters:
