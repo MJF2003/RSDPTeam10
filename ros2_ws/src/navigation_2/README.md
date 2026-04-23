@@ -51,24 +51,23 @@ Change absolute path of the behavior tree:
 # Running the Node
 ```bash
 # Terminal1
- ros2 launch rover_controller launch_sim.py run_vision_stub:=false run_navigation_stub:=false run_smooth_observations:=false run_rover_controller:=true
+ros2 launch rover_controller launch_sim.py run_navigation_stub:=false
 ```
 ```bash
 # Terminal2
-ros2 launch rover_slam slam_launch.py use_sim_time:=true
-```
-```bash
-# Terminal3
 ros2 launch navigation_2 navigation.launch.py use_sim_time:=true
 ```
 
+`launch_sim.py` already starts the simulated SLAM stack by default through
+`run_slam_node:=true`, so do not launch `rover_slam/slam_launch.py` separately
+unless you disable it in `launch_sim.py`.
+
 Next, you can launch RViz and send the target point
 ```bash
-# Terminal4
+# Terminal3
 ros2 run rviz2 rviz2
 ```
 ```bash
-# Terminal5
-ros2 action send_goal /navigate_to_block rover_interface/action/NavigateToPos "{target_pos: {header: {frame_id: 'map'}, point: {x: 3.0, y: 0.0, z: 0.0}}}
+# Terminal4
+ros2 action send_goal /navigate_to_pos rover_interface/action/NavigateToPos "{target_pos: {header: {frame_id: 'map'}, point: {x: 3.0, y: 0.0, z: 0.0}}}"
 ```
-

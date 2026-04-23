@@ -229,7 +229,7 @@ class ControllerNode(Node):
 
         if not self.nav_action_client.wait_for_server(timeout_sec=0.5):
             self.get_logger().warn(
-                "Navigation action server '/navigate_to_block' is not available."
+                "Navigation action server '/navigate_to_pos' is not available."
             )
             return False
 

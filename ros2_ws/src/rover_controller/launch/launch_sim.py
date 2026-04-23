@@ -1,7 +1,7 @@
 import os
 
 from ament_index_python.packages import get_package_share_directory
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
 from launch.conditions import IfCondition
 from launch.launch_description import LaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -146,6 +146,15 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("run_navigation_stub")),
     )
 
+    navigation_stub_warning = LogInfo(
+        msg=(
+            "launch_sim.py: run_navigation_stub:=true exposes /navigate_to_pos. "
+            "Set run_navigation_stub:=false when launching navigation_2 to avoid "
+            "competing navigation providers."
+        ),
+        condition=IfCondition(LaunchConfiguration("run_navigation_stub")),
+    )
+
     manipulation_stub = Node(
         package="rover_sim_stubs",
         executable="manipulation_stub",
@@ -202,6 +211,7 @@ def generate_launch_description():
             slam_launch,
             vision_launch,
             vision_stub,
+            navigation_stub_warning,
             navigation_stub,
             manipulation_stub,
             smooth_observations,
