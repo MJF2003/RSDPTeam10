@@ -366,4 +366,5 @@ def main(args=None):
         executor.remove_node(node.navigator)
         executor.remove_node(node)
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
