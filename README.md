@@ -39,7 +39,17 @@ The sim exposes stub modules which do basic actions - like a vision stub which g
 > ros2 launch rover_controller launch_sim.py run_vision_stub:=false run_navigation_stub:=false run_smooth_observations:=false run_rover_controller:=false
 ```
 
-Check the launch file for the full list of launch arguments.
+Check the launch file for the full list of launch arguments. To run the sim with true nodes (excluding the manipulation stuff), the steps are: 
+
+Terminal 1:
+```bash
+ros2 launch rover_controller launch_sim.py run_nav_debug_overlay:=true run_vision_true:=true run_navigation_stub:=false
+```
+
+Terminal 2: (start the sim and wait 5-10s so the /map frame is populated before running this!)
+```bash
+ros2 launch navigation_2 navigation.launch.py use_sim_time:=true
+```
 
 ## Launch the SLAM Node
 The SLAM Node consumes a laser scan to produce a map on the `/map` topic. You can run the node itself by running 
