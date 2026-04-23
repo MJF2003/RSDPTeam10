@@ -68,10 +68,36 @@ There are a number of packages, not included in the repository which our custom 
 > vcs import src < src/warehouse_ros_mongo.repos
 > sudo apt-get update && rosdep install --from-paths src --ignore-src -r -y --skip-keys="python-tk python-numpy"
 > sudo apt-get python3-tk python3-numpy
+```
+
 ## Running the vision node
 The vision node requires various installs to run. Check out the full instructions in the README at `ros2_ws/src/rsdp_perception/README.md`.
 
 After all the required installs, you can launch the node + Realsense camera with 
 ```bash
 ros2 launch rsdp_perception vision.launch.py
+```
+
+## Running the Navigation node
+To run the navigation need you need the following installs:
+
+```bash
+sudo apt update
+sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup ros-jazzy-nav2-simple-commander ros-jazzy-turtlebot3-msgs ros-jazzy-tf2-geometry-msgs
+```
+
+The repo directory for the navigation node should look like...
+```bash
+navigation_2/
+├── config/
+│   └── neo_robot.yaml
+│   └── behavior_trees
+│       └── navigate_through_poses_w_replanning_and_recovery.xml
+│       └── navigate_to_pose_w_replanning_and_recovery.xml
+├── launch/
+│   └── navigation.launch.py
+├── navigation_2/
+│   └── navigation_service_node.py
+├── package.xml
+└── setup.py
 ```
