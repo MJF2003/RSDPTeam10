@@ -101,3 +101,5 @@ navigation_2/
 ├── package.xml
 └── setup.py
 ```
+
+For more instructions on running it check the readme file in `ros2_ws/src/navigation_2`.
