@@ -43,8 +43,12 @@ def generate_launch_description():
                     default_nav_through_poses_bt_xml
                 ),
                 'controller_server.ros__parameters.use_sim_time': use_sim_time,
-                'local_costmap.ros__parameters.use_sim_time': use_sim_time,
-                'global_costmap.ros__parameters.use_sim_time': use_sim_time,
+                'local_costmap.local_costmap.ros__parameters.use_sim_time': (
+                    use_sim_time
+                ),
+                'global_costmap.global_costmap.ros__parameters.use_sim_time': (
+                    use_sim_time
+                ),
                 'planner_server.ros__parameters.use_sim_time': use_sim_time,
                 'behavior_server.ros__parameters.use_sim_time': use_sim_time,
                 'waypoint_follower.ros__parameters.use_sim_time': use_sim_time,
