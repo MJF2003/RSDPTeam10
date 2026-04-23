@@ -20,7 +20,7 @@ bt_navigator:
 controller_server:
   ros__parameters:
     controller_plugins: ["FollowPath"]
-    controller_frequency: 50.0
+    controller_frequency: 20.0
     failure_tolerance: 0.3
     odom_topic: "odom"
     goal_checker_plugins: ["general_goal_checker"]
