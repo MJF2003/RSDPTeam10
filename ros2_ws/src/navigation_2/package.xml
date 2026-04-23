@@ -1,17 +1,22 @@
 <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>rover_sim_stubs</name>
+  <name>navigation_2</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="alexinch96@yahoo.com">laptop20</maintainer>
+  <description>Navigation Package</description>
+  <maintainer email="student49@todo.todo">student49</maintainer>
   <license>TODO: License declaration</license>
 
-  <depend>rover_interface</depend>
+  <buildtool_depend>ament_python</buildtool_depend>
+
   <depend>rclpy</depend>
+  <depend>nav2_simple_commander</depend>
+  <depend>tf_transformations</depend>
+  <depend>tf2_ros</depend>
   <depend>geometry_msgs</depend>
+  <depend>lifecycle_msgs</depend>
   <depend>nav_msgs</depend>
-  <depend>visualization_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>rover_interface</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -39,7 +39,17 @@ The sim exposes stub modules which do basic actions - like a vision stub which g
 > ros2 launch rover_controller launch_sim.py run_vision_stub:=false run_navigation_stub:=false run_smooth_observations:=false run_rover_controller:=false
 ```
 
-Check the launch file for the full list of launch arguments.
+Check the launch file for the full list of launch arguments. To run the sim with true nodes (excluding the manipulation stuff), the steps are: 
+
+Terminal 1:
+```bash
+ros2 launch rover_controller launch_sim.py run_nav_debug_overlay:=true run_vision_true:=true run_navigation_stub:=false
+```
+
+Terminal 2: (start the sim and wait 5-10s so the /map frame is populated before running this!)
+```bash
+ros2 launch navigation_2 navigation.launch.py use_sim_time:=true
+```
 
 ## Launch the SLAM Node
 The SLAM Node consumes a laser scan to produce a map on the `/map` topic. You can run the node itself by running 
@@ -68,6 +78,8 @@ There are a number of packages, not included in the repository which our custom 
 > vcs import src < src/warehouse_ros_mongo.repos
 > sudo apt-get update && rosdep install --from-paths src --ignore-src -r -y --skip-keys="python-tk python-numpy"
 > sudo apt-get python3-tk python3-numpy
+```
+
 ## Running the vision node
 The vision node requires various installs to run. Check out the full instructions in the README at `ros2_ws/src/rsdp_perception/README.md`.
 
@@ -75,3 +87,29 @@ After all the required installs, you can launch the node + Realsense camera with
 ```bash
 ros2 launch rsdp_perception vision.launch.py
 ```
+
+## Running the Navigation node
+To run the navigation need you need the following installs:
+
+```bash
+sudo apt update
+sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup ros-jazzy-nav2-simple-commander ros-jazzy-turtlebot3-msgs ros-jazzy-tf2-geometry-msgs
+```
+
+The repo directory for the navigation node should look like...
+```bash
+navigation_2/
+├── config/
+│   └── neo_robot.yaml
+│   └── behavior_trees
+│       └── navigate_through_poses_w_replanning_and_recovery.xml
+│       └── navigate_to_pose_w_replanning_and_recovery.xml
+├── launch/
+│   └── navigation.launch.py
+├── navigation_2/
+│   └── navigation_service_node.py
+├── package.xml
+└── setup.py
+```
+
+For more instructions on running it check the readme file in `ros2_ws/src/navigation_2`.

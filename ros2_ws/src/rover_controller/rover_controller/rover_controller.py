@@ -1,17 +1,23 @@
-# TODO: implement main controller - it needs to handle
-# transitions ketween states in the main
 from enum import Enum, auto
 
 import rclpy
+from geometry_msgs.msg import PointStamped, PoseStamped
 from rclpy.action.client import ActionClient
+from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.time import Time
+from tf2_ros import Buffer, TransformException, TransformListener
 
-from rover_interface.action import NavigateToPos
+from rover_controller.navigation_goals import (
+    compute_standoff_pose,
+    quaternion_to_yaw,
+    yaw_to_quaternion,
+)
+from rover_interface.action import ManipulateBlock, NavigateToPos
 from rover_interface.msg import (
     BinPoseSmoothed,
     BinPoseSmoothedArray,
     BlockBinColor,
-    BlockPoseObservation,
     BlockPoseSmoothed,
     BlockPoseSmoothedArray,
 )
@@ -26,13 +32,13 @@ class Phase:
         EXPLORE = auto()
 
     class ApproachBlock(Enum):
-        PROPOSE_NAV_POSE = auto()
+        PROPOSE_NAV_POSE = auto()  # TODO(Alex): Implement this logic
         EXECUTE_NAV = auto()
 
     class GraspBlock(Enum):
         ATTEMPT_GRASP = auto()
         RECOMPUTE_POSITION = auto()
-        TRANSITION_TO_CARRY = auto()
+        TRANSITION_TO_CARRY = auto()  # TODO(Alex): Can the manipulator node do this?
 
     class ApproachBin(Enum):
         PROPOSE_NAV_POSE = auto()
@@ -40,13 +46,14 @@ class Phase:
 
     class DepositBlock(Enum):
         ATTEMPT_DEPOSIT = auto()
-        REGRASP_BLOCK = auto()
+        REGRASP_BLOCK = auto()  # TODO(Alex): TBD whether we need this
 
     class PostDeposit(Enum):
         TERMINATE = auto()
 
 
 def color_to_str(color: BlockBinColor | int) -> str:
+    "Converts BlockBinColor enums to strings"
     color_value = int(color.color) if isinstance(color, BlockBinColor) else int(color)
     return {
         BlockBinColor.BLUE: "BLUE",
@@ -63,6 +70,22 @@ class ControllerNode(Node):
         super().__init__("controller_node")
         self.state = Phase.StartUp.WAIT
         self.get_logger().info(f"Launching controller node with state {self.state=}")
+
+        self.map_frame = str(self.declare_parameter("map_frame", "map").value)
+        self.robot_base_frame = str(
+            self.declare_parameter("robot_base_frame", "base_link").value
+        )
+        self.navigation_standoff_distance_m = float(
+            self.declare_parameter("navigation_standoff_distance_m", 0.5).value
+        )
+        self.min_goal_vector_length_m = float(
+            self.declare_parameter("min_goal_vector_length_m", 1e-3).value
+        )
+        self.tf_lookup_timeout = Duration(
+            seconds=float(self.declare_parameter("tf_lookup_timeout_sec", 0.2).value)
+        )
+        self.tf_buffer = Buffer(node=self)
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         block_topic = "/controller/block_poses"
         # Observation Management
@@ -85,7 +108,7 @@ class ControllerNode(Node):
 
         self.blocks: list[BlockPoseSmoothed] = []
         self.collected: set[int] = set()  # stores ids of collected blocks
-        self.bins: list[BinPoseSmoothed] = []  # TODO(alex) - just a dummy variable!!!
+        self.bins: list[BinPoseSmoothed] = []
         self.target_block: None | BlockPoseSmoothed = None
         self.target_bin: None | BinPoseSmoothed = None
 
@@ -101,6 +124,18 @@ class ControllerNode(Node):
         )
         self.nav_goal_in_flight = False
 
+        manip_action_topic = "/manipulate_block"
+        self.get_logger().info(
+            f"Connecting to manipulation action server {manip_action_topic=}"
+        )
+        self.manip_action_client = ActionClient(
+            self,
+            ManipulateBlock,
+            manip_action_topic,
+        )
+        self.manip_goal_in_flight = False
+        self.manip_goal_operation: int | None = None
+
         # Spin main controller loop
         controller_period = 0.1
         self.main_loop_timer = self.create_timer(controller_period, callback=self.loop)
@@ -108,7 +143,12 @@ class ControllerNode(Node):
             f"Setting up main loop timer with frequency {1 / controller_period:.1f}Hz"
         )
 
+        self.loop_count = 0  # var for controlling frequency of state logging
+
     def loop(self):
+        self.loop_count += 1
+        if self.loop_count % 50 == 0:  # logs generic status every 5s
+            self.log_status()
         match self.state:
             case Phase.StartUp.WAIT:
                 self.wait()
@@ -124,18 +164,35 @@ class ControllerNode(Node):
                 self.select_target_bin(self.target_block)
             case Phase.ApproachBin.EXECUTE_NAV:
                 self.navigate_to_pose(self.target_bin)
+            case Phase.DepositBlock.ATTEMPT_DEPOSIT:
+                self.deposit_block()
+            case Phase.PostDeposit.TERMINATE:
+                pass
+            case _:
+                self.get_logger().warn(f"Unexpected state {self.state=}")
+
+    def log_status(self):
+        self.get_logger().info(
+            f"Current phase: {self.state}\nKnown blocks: {self.blocks}\nKnown bins: {self.bins}"
+        )
 
     def wait(self):
-        self.get_logger().info("I am waiting :)")
-        # TODO: how do you check how many other nodes are up? expected
-        # number of pubs/subs?
-        # TODO: add a proper check here
-        all_nodes_ready = True
-        if all_nodes_ready:
-            self.get_logger().info("All nodes ready, progressing to bin observation")
-            self.state = Phase.StartUp.OBSERVE_BINS
-        else:
-            self.get_logger().warning("Some nodes still not ready")
+        "Waits until all expected topics and action servers are ready"
+        for sub in self.subscriptions:
+            if self.count_publishers(sub.topic_name) == 0:
+                self.get_logger().info(f"Waiting for publisher on {sub.topic_name}...")
+                return
+
+        for attr in self.__dict__.values():
+            if isinstance(attr, ActionClient):
+                if not attr.server_is_ready():
+                    # self.get_logger().info(
+                    #     f"Waiting for action server {attr._action_name}..."
+                    # )
+                    return
+
+        self.get_logger().info("All interfaces ready, progressing to bin observation.")
+        self.state = Phase.StartUp.OBSERVE_BINS
 
     def observe_bins(self):
         self.get_logger().info("I am observing O.O")
@@ -150,17 +207,16 @@ class ControllerNode(Node):
             self.get_logger().warning("DIDN'T SEE ALL BINS!")
 
     def explore(self):
-        ...
         # Tbd whether these happen in the controller or the navigation node
         # ideally should be in nav node
-        self.get_logger().info("Beginning exploration!")
+        # self.get_logger().info("Beginning exploration!")
 
         # First - if we have a target block, move to the Approach Phase
         if self.target_block is not None:
             self.state = Phase.ApproachBlock.EXECUTE_NAV
             return
         # Otherwise - begin executing an ExploreMove
-        self.get_logger().info("Pretending to explore")
+        # self.get_logger().info("Pretending to explore")
         return
 
     def block_pose_callback(self, msg: BlockPoseSmoothedArray):
@@ -171,7 +227,10 @@ class ControllerNode(Node):
         self.blocks = msg.blocks  # type: ignore
         # if we have any uncollected blocks - set it as the target
         for block in self.blocks:
-            if block.id not in self.collected:
+            if (block.id not in self.collected) and (self.target_block is None):
+                self.get_logger().info(
+                    f"Targeting {color_to_str(block.color)} block, ignoring collected blocks {self.collected=}"
+                )
                 self.target_block = block
 
     def bin_pose_callback(self, msg: BinPoseSmoothedArray):
@@ -195,18 +254,29 @@ class ControllerNode(Node):
 
         if not self.nav_action_client.wait_for_server(timeout_sec=0.5):
             self.get_logger().warn(
-                "Navigation action server '/navigate_to_block' is not available."
+                "Navigation action server '/navigate_to_pos' is not available."
             )
             return False
 
+        goal_pose = self._build_navigation_goal_pose(target.position)
+        if goal_pose is None:
+            return False
+
         goal = NavigateToPos.Goal()
-        goal.target_pos = target.position
+        goal.target_pose = goal_pose
 
         self.nav_goal_in_flight = True
-        # TODO(Alex) Make this specific to block/bin
+        goal_yaw = quaternion_to_yaw(
+            x=goal_pose.pose.orientation.x,
+            y=goal_pose.pose.orientation.y,
+            z=goal_pose.pose.orientation.z,
+            w=goal_pose.pose.orientation.w,
+        )
         self.get_logger().info(
-            f"Sending navigation goal for target "
-            f"at ({target.position.point.x:.2f}, {target.position.point.y:.2f})"
+            "Sending navigation goal for target "
+            f"at ({target.position.point.x:.2f}, {target.position.point.y:.2f}) "
+            f"via approach pose ({goal_pose.pose.position.x:.2f}, "
+            f"{goal_pose.pose.position.y:.2f}, yaw={goal_yaw:.2f} rad)"
         )
 
         goal_future = self.nav_action_client.send_goal_async(
@@ -216,9 +286,56 @@ class ControllerNode(Node):
         goal_future.add_done_callback(self._nav_goal_response_callback)
         return True
 
+    def _build_navigation_goal_pose(
+        self, target_position: PointStamped
+    ) -> PoseStamped | None:
+        goal_frame = target_position.header.frame_id.strip() or self.map_frame
+        try:
+            robot_transform = self.tf_buffer.lookup_transform(
+                goal_frame,
+                self.robot_base_frame,
+                Time(),
+                timeout=self.tf_lookup_timeout,
+            )
+        except TransformException as exc:
+            self.get_logger().warning(
+                f"Cannot compute navigation approach pose in frame '{goal_frame}': {exc}"
+            )
+            return None
+
+        robot_x = float(robot_transform.transform.translation.x)
+        robot_y = float(robot_transform.transform.translation.y)
+        robot_yaw = quaternion_to_yaw(
+            x=float(robot_transform.transform.rotation.x),
+            y=float(robot_transform.transform.rotation.y),
+            z=float(robot_transform.transform.rotation.z),
+            w=float(robot_transform.transform.rotation.w),
+        )
+
+        approach_pose = compute_standoff_pose(
+            robot_x=robot_x,
+            robot_y=robot_y,
+            robot_yaw=robot_yaw,
+            target_x=float(target_position.point.x),
+            target_y=float(target_position.point.y),
+            stand_off_distance=self.navigation_standoff_distance_m,
+            min_goal_vector_length=self.min_goal_vector_length_m,
+        )
+        goal_qz, goal_qw = yaw_to_quaternion(approach_pose.yaw)
+
+        goal_pose = PoseStamped()
+        goal_pose.header.frame_id = goal_frame
+        goal_pose.header.stamp = self.get_clock().now().to_msg()
+        goal_pose.pose.position.x = float(approach_pose.x)
+        goal_pose.pose.position.y = float(approach_pose.y)
+        goal_pose.pose.position.z = 0.0
+        goal_pose.pose.orientation.z = float(goal_qz)
+        goal_pose.pose.orientation.w = float(goal_qw)
+        return goal_pose
+
     def _nav_feedback_callback(self, feedback_msg):
         dist = feedback_msg.feedback.distance_remaining
-        self.get_logger().info(f"Navigation feedback: distance_remaining={dist:.3f} m")
+        # self.get_logger().info(f"Navigation feedback: distance_remaining={dist:.3f} m")
 
     def _nav_goal_response_callback(self, future):
         goal_handle = future.result()
@@ -243,9 +360,9 @@ class ControllerNode(Node):
                 self.state = Phase.GraspBlock.ATTEMPT_GRASP
             elif self.state in Phase.ApproachBin:
                 self.get_logger().info(
-                    f"Succesful navigation. Transitioning to phase {Phase.GraspBlock.ATTEMPT_GRASP}"
+                    f"Succesfully navigated to {color_to_str(self.target_bin.color)} bin. Transitioning to phase {Phase.DepositBlock.ATTEMPT_DEPOSIT}"  # type: ignore
                 )
-                self.state = Phase.Explore.EXPLORE
+                self.state = Phase.DepositBlock.ATTEMPT_DEPOSIT
             else:
                 self.get_logger().warn(
                     f"Unexpected state at end of navigation: {self.state=}"
@@ -259,42 +376,160 @@ class ControllerNode(Node):
 
     # ------------------------ MANIPULATION -----------------------------------------
     def grasp_block(self, target_block: BlockPoseSmoothed | None):
-        # basic fake logic - mark the target_block acquired, set phase
-        # to ApproachBin.
-        # TODO(Alex): Add proper action server
         if target_block is None:
             self.get_logger().warn(f"Received invalid {target_block=}")
             self.state = Phase.Explore.EXPLORE
             return
 
-        # TODO(Alex): This block targeting logic should maybe not be in this func
-        self.collected.add(target_block.id)
-        self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
+        color = target_block.color
+        self.send_manipulation_goal(
+            operation=ManipulateBlock.Goal.GRASP,
+            target=target_block,
+            description=f"Grasping block with color: {color_to_str(color)}",
+        )
 
     def select_target_bin(self, target_block: BlockPoseSmoothed | None):
         # TODO(Alex): Remove this assert
         assert target_block is not None
         color = target_block.color
         color_value = int(color.color)
-        self.get_logger().info(f"Grasping block with color: {color_to_str(color)}")
         for bin in self.bins:
             if int(bin.color.color) != color_value:
                 self.get_logger().info(
-                    f"Ignoring bin {color_to_str(bin.color)} for grasp"
+                    f"Ignoring bin {color_to_str(bin.color)} for targetting"
                 )
                 continue
             self.target_bin = bin
             self.state = Phase.ApproachBin.EXECUTE_NAV
-            self.get_logger().info(f"Succesfully grasped {color_to_str(color)} block")
+            self.get_logger().info(
+                f"Succesfully identified matching {color_to_str(color)} bin"
+            )
             return
         self.get_logger().info(
             f"No matching bin known for block color {color_to_str(color)}"
         )
 
     def deposit_block(self):
-        self.target_block = None
-        self.target_bin = None
-        self.get_logger().info("Depositing block")
+        if self.target_block is None or self.target_bin is None:
+            self.get_logger().warn(
+                "Cannot deposit without both a target block and target bin."
+            )
+            self.state = Phase.Explore.EXPLORE
+            return
+
+        self.send_manipulation_goal(
+            operation=ManipulateBlock.Goal.DEPOSIT,
+            target=self.target_bin,
+            description=(
+                f"Depositing {color_to_str(self.target_block.color)} block in "
+                f"{color_to_str(self.target_bin.color)} bin"
+            ),
+        )
+
+    def send_manipulation_goal(
+        self,
+        operation: int,
+        target: BlockPoseSmoothed | BinPoseSmoothed | None,
+        description: str,
+    ) -> bool:
+        if self.manip_goal_in_flight or (target is None):
+            return False
+
+        if not self.manip_action_client.wait_for_server(timeout_sec=0.5):
+            self.get_logger().warn(
+                "Manipulation action server '/manipulate_block' is not available."
+            )
+            return False
+
+        goal = ManipulateBlock.Goal()
+        goal.operation = operation
+        goal.target_pos = target.position
+
+        self.manip_goal_in_flight = True
+        self.manip_goal_operation = operation
+        self.get_logger().info(
+            f"{description} at "
+            f"({target.position.point.x:.2f}, {target.position.point.y:.2f})"
+        )
+
+        goal_future = self.manip_action_client.send_goal_async(
+            goal,
+            feedback_callback=self._manip_feedback_callback,
+        )
+        goal_future.add_done_callback(self._manip_goal_response_callback)
+        return True
+
+    def _manip_feedback_callback(self, feedback_msg):
+        stage = feedback_msg.feedback.current_stage
+        # self.get_logger().info(f"Manipulation feedback: current_stage='{stage}'")
+
+    def _manip_goal_response_callback(self, future):
+        goal_handle = future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            self.get_logger().error("Manipulation goal was rejected.")
+            self._handle_manipulation_result(success=False, message="Goal rejected.")
+            return
+
+        self.get_logger().info("Manipulation goal accepted.")
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._manip_result_callback)
+
+    def _manip_result_callback(self, future):
+        result = future.result().result
+        status = "SUCCESS" if result.success else "FAILURE"
+        self.get_logger().info(
+            f"Manipulation result {status}: message='{result.message}'"
+        )
+        self._handle_manipulation_result(success=result.success, message=result.message)
+
+    def _handle_manipulation_result(self, success: bool, message: str):
+        operation = self.manip_goal_operation
+        self.manip_goal_in_flight = False
+        self.manip_goal_operation = None
+
+        if operation == ManipulateBlock.Goal.GRASP:
+            if success:
+                if self.target_block is None:
+                    self.get_logger().warn(
+                        "Grasp reported success but there is no target block."
+                    )
+                    self.state = Phase.Explore.EXPLORE
+                    return
+
+                self.collected.add(self.target_block.id)
+                self.get_logger().info(f"Adding target block to {self.collected=}")
+                self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
+                return
+
+            self.get_logger().warning(
+                f"Grasp failed with message '{message}'. Re-approaching block."
+            )
+            self.state = Phase.ApproachBlock.EXECUTE_NAV
+            return
+
+        if operation == ManipulateBlock.Goal.DEPOSIT:
+            if success:
+                self.target_block = None
+                self.target_bin = None
+
+                # if we have successfully collected 3 blocks, terminate the mission,
+                # or return to the exploration phase to find more
+                if len(self.collected) < 3:
+                    self.state = Phase.Explore.EXPLORE
+                else:
+                    self.state = Phase.PostDeposit.TERMINATE
+                return
+
+            self.get_logger().warning(
+                f"Deposit failed with message '{message}'. Re-approaching bin."
+            )
+            self.state = Phase.ApproachBin.EXECUTE_NAV
+            return
+
+        self.get_logger().warn(
+            f"Manipulation completed with unknown operation {operation=}; "
+            f"returning to explore."
+        )
         self.state = Phase.Explore.EXPLORE
 
 

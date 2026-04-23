@@ -26,6 +26,8 @@ setup(
         'console_scripts': [
             'vision_stub = rover_sim_stubs.vision_stub:main',
             'navigation_stub = rover_sim_stubs.navigation_stub:main',
+            'manipulation_stub = rover_sim_stubs.manipulation_stub:main',
+            'nav_debug_overlay = rover_sim_stubs.nav_debug_overlay:main',
         ],
     },
 )

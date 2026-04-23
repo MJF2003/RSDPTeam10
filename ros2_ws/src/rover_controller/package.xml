@@ -14,12 +14,16 @@
 
   <!-- <exec_depend>python-numpy</exec_depend> -->
   <exec_depend>python3-numpy</exec_depend>
+  <depend>geometry_msgs</depend>
   <depend>launch</depend>
   <depend>launch_ros</depend>
   <depend>rclpy</depend>
   <depend>rover_gz_bringup</depend>
   <depend>rover_interface</depend>
   <depend>rover_sim_stubs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
   <export>
     <build_type>ament_python</build_type>
   </export>
