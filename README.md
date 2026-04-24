@@ -65,6 +65,8 @@ ros2 launch rover_slam slam_launch.py launch_rviz:=true launch_rplidar:=true
 To run the RPLidar A2M12 (ie. the real lidar) you need to set the permissions so the computer can communicate with it using this command.
 ```bash
 sudo chmod 777 /dev/ttyUSB0
+```
+
 ## Required ROS2 Package Installation
 There are a number of packages, not included in the repository which our custom packages rely on. These are listed as follows:
 
@@ -113,3 +115,17 @@ navigation_2/
 ```
 
 For more instructions on running it check the readme file in `ros2_ws/src/navigation_2`.
+
+# Running on the Rover (REAL!!!!!!!!)
+## SLAM:
+```bash
+ros2 launch rover_slam slam_launch.py launch_rplidar:=true use_sim_time:=false
+```
+If this has worked correctly then /map should be populated. You can pass the argument `launch_rviz:=true` as well to launch an rviz instance which will show the map.
+
+## Navigation
+(wait 5-10s before running this - may have to be the last node run, it will go weird if /map is not established. 
+```bash
+ros2 launch navigation_2 navigation.launch.py use_sim_time:=false
+```
+You can check this has worked - the action server `/navigate_to_pose` will exist - run `ros2 action list` to check.
