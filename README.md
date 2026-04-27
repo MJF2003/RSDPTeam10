@@ -48,7 +48,7 @@ password:raspberry
 ```bash
 sudo date -u -s "2026-02-20 12:15:00" #Change to the current time.
 ```
-Use on simulation:
+##Use on simulation:
 Terminal 1: Start the simulation
 ```bash
 cd ~/RSDPTeam10-main/ros2_ws
