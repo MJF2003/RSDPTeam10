@@ -4,10 +4,19 @@ bool run_until_cancelled
 bool success
 string message
 float32 elapsed_time_sec
-string final_mode
+string final_state
+uint32 goals_sent
+uint32 goals_succeeded
+uint32 goals_failed
 ---
-string current_mode
-float32 front
-float32 left_open_score
-float32 right_open_score
+string current_state
 float32 elapsed_time_sec
+float32 robot_x
+float32 robot_y
+float32 current_goal_x
+float32 current_goal_y
+uint32 frontier_cluster_count
+uint32 frontier_candidate_count
+uint32 goals_sent
+uint32 goals_succeeded
+uint32 goals_failed
