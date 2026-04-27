@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             'wander = leo_explore.wander:main',
             'explore_action_server = leo_explore.explore_action_server:main',
+            'frontier_explorer = leo_explore.frontier_explorer:main',
         ],
     },
 )
