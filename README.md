@@ -46,10 +46,50 @@ First, synchronize the robot’s internal clock with the computer (or NUC) clock
 ```
 password:raspberry
 ```bash
-sudo date -u -s "2026-02-20 12:15:00"
+sudo date -u -s "2026-02-20 12:15:00" #Change to the current time.
 ```
-Change to the current time.
-Open a terminal in the SLAM_2D_Learn folder
+Use on simulation:
+Terminal 1: Start the simulation
 ```bash
-source install setup.bash
-ros2 launch leo_explore auto_slam_wander.launch.py    #Launch the leo rover for autonomous exploration and mapping
+cd ~/RSDPTeam10-main/ros2_ws
+source /opt/ros/jazzy/setup.bash
+source ~/RSDPTeam10-main/ros2_ws/install/setup.bash
+export GZ_SIM_SYSTEM_PLUGIN_PATH=$GZ_SIM_SYSTEM_PLUGIN_PATH:/usr/lib/x86_64-linux-gnu/gz-sim-8/plugins
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:~/RSDPTeam10-main/ros2_ws/src/rover_description:~/RSDPTeam10-main/ros2_ws/src/leo_gz_worlds
+ros2 launch rover_controller launch_sim.py run_navigation_stub:=false
+```
+Terminal 2: Start SLAM
+```bash
+cd /home/student02/SLAM_2D_Learn/SLAM_2D_Learn
+source /opt/ros/jazzy/setup.bash
+source ~/RSDPTeam10-main/ros2_ws/install/setup.bash
+source /home/student02/SLAM_2D_Learn/SLAM_2D_Learn/install/setup.bash
+ros2 launch leo_explore slam_only_sim.launch.py
+```
+Terminal 3: Start Nav2
+```bash
+cd /home/student02/SLAM_2D_Learn/SLAM_2D_Learn
+source /opt/ros/jazzy/setup.bash
+source ~/RSDPTeam10-main/ros2_ws/install/setup.bash
+source /home/student02/SLAM_2D_Learn/SLAM_2D_Learn/install/setup.bash
+ros2 launch leo_explore nav2_minimal_sim.launch.py
+```
+Terminal 4: Start the explore action server
+```bash
+cd /home/student02/SLAM_2D_Learn/SLAM_2D_Learn
+source /opt/ros/jazzy/setup.bash
+source ~/RSDPTeam10-main/ros2_ws/install/setup.bash
+source /home/student02/SLAM_2D_Learn/SLAM_2D_Learn/install/setup.bash
+ros2 run leo_explore explore_action_server --ros-args -p use_sim_time:=true
+```
+Terminal 5: Send a 120-second exploration goal
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/RSDPTeam10-main/ros2_ws/install/setup.bash
+source /home/student02/SLAM_2D_Learn/SLAM_2D_Learn/install/setup.bash
+ros2 action send_goal /explore leo_explore_interfaces/action/Explore "{max_runtime_sec: 120.0, run_until_cancelled: false}" 
+```
+Alternatively: Keep exploring until manually cancelled
+```bash
+ros2 action send_goal /explore leo_explore_interfaces/action/Explore "{max_runtime_sec: 0.0, run_until_cancelled: true}"
+```
