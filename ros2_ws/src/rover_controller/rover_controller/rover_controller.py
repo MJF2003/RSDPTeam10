@@ -200,7 +200,7 @@ class ControllerNode(Node):
         #
         def log_block_bin(block_or_bin: BlockPoseSmoothed | BinPoseSmoothed) -> str:
             p = block_or_bin.position.point
-            return f"{color_to_str(block_or_bin.color)} block at ({p.x:.2f}, {p.y:.2f}, {p.z:.2f})"
+            return f"{color_to_str(block_or_bin.color)} at ({p.x:.2f}, {p.y:.2f})"
 
         blocks_str = ", ".join(log_block_bin(b) for b in self.blocks)
         bins_str = ", ".join(log_block_bin(b) for b in self.bins)

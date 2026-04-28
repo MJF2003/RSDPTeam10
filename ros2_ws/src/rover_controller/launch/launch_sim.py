@@ -65,9 +65,7 @@ def generate_launch_description():
     use_arm_arg = DeclareLaunchArgument(
         "use_arm",
         default_value="true",
-        description=(
-            "Include the manipulator arm in the simulated robot description."
-        ),
+        description=("Include the manipulator arm in the simulated robot description."),
     )
 
     run_vision_stub_arg = DeclareLaunchArgument(
@@ -102,7 +100,7 @@ def generate_launch_description():
     )
     run_nav_debug_overlay_arg = DeclareLaunchArgument(
         "run_nav_debug_overlay",
-        default_value="false",
+        default_value="true",
         description="Run rover_sim_stubs nav_debug_overlay node",
     )
     run_arm_joint_state_fallback_arg = DeclareLaunchArgument(
