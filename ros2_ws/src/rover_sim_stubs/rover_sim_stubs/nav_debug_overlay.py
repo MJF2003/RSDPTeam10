@@ -582,7 +582,7 @@ class NavDebugOverlay(Node):
                 ),
             )
         )
-        self.get_logger().info(" | ".join(summary_parts))
+        # self.get_logger().info(" | ".join(summary_parts))
 
     def _distance_summaries(
         self,
