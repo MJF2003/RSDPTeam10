@@ -324,6 +324,7 @@ class ExploreActionServer(Node):
             self.reset_explore_state_for_new_goal(goal_handle)
 
         self.get_logger().info('Explore goal accepted. Frontier exploration is now active.')
+        self.plan_once()
 
         max_runtime = float(goal_handle.request.max_runtime_sec)
         run_until_cancelled = bool(goal_handle.request.run_until_cancelled)

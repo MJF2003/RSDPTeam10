@@ -138,6 +138,9 @@ def generate_launch_description():
             package='leo_explore',
             executable='explore_action_server',
             output='screen',
-            parameters=[{'use_sim_time': use_sim_time}],
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'plan_period': 0.5,
+            }],
             condition=IfCondition(run_explore_server)),
     ])
