@@ -37,6 +37,7 @@ def generate_launch_description():
         launch_arguments={
             "robot_ns": robot_ns,
             "headless": LaunchConfiguration("headless"),
+            "use_arm": LaunchConfiguration("use_arm"),
         }.items(),
     )
 
@@ -60,6 +61,13 @@ def generate_launch_description():
         "headless",
         default_value="false",
         description="Launch Gazebo without the GUI while keeping sensor rendering available.",
+    )
+    use_arm_arg = DeclareLaunchArgument(
+        "use_arm",
+        default_value="true",
+        description=(
+            "Include the manipulator arm in the simulated robot description."
+        ),
     )
 
     run_vision_stub_arg = DeclareLaunchArgument(
@@ -191,13 +199,24 @@ def generate_launch_description():
         name="sim_arm_joint_state_publisher",
         output="screen",
         parameters=[{"use_sim_time": True}],
-        condition=IfCondition(LaunchConfiguration("run_arm_joint_state_fallback")),
+        condition=IfCondition(
+            PythonExpression(
+                [
+                    "'",
+                    LaunchConfiguration("run_arm_joint_state_fallback"),
+                    "'.lower() in ('true', '1') and '",
+                    LaunchConfiguration("use_arm"),
+                    "'.lower() in ('true', '1')",
+                ]
+            )
+        ),
     )
 
     return LaunchDescription(
         [
             robot_ns_arg,
             headless_arg,
+            use_arm_arg,
             run_vision_stub_arg,
             run_vision_true_arg,
             run_navigation_stub_arg,

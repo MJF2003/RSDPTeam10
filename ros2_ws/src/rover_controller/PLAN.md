@@ -62,8 +62,9 @@ ros2 topic pub /cv/bin_poses rover_interface/msg/BinPoseObservation "{
 - The vision node (in sim) seems to be identifying blocks with unknown colours. How do we want to handle that case? And are they real blocks?
 
 # NEXT STEPS
-NEXT: Merge sim + Mike new description
-NEXT: Add Haotian's code (under PR)
-
-- Q - is it time to start working on the visualisation setup in rviz?
 - IDEA - if the smoothing node finds a new node far from an old one with the same colour as another one, overwrite it - may be able handle the SLAM drifts
+
+TODOS: ~fix explore server waiting for map~ 
+TODOS: ~alternate map which places a wall between the rover and the blocks~ 
+TODOS: ~Optional argument to the rover_description, so that in sim we can just not render the arm (because it's making everything fucking slow)~
+TODOS: Can we ignore some stuff in the colcon build?

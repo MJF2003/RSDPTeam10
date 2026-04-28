@@ -194,8 +194,21 @@ class ControllerNode(Node):
                 self.get_logger().warn(f"Unexpected state {self.state=}")
 
     def log_status(self):
+        # self.get_logger().info(
+        #     f"Current phase: {self.state}\nKnown blocks: {self.blocks}\nKnown bins: {self.bins}"
+        # )
+        #
+        def log_block_bin(block_or_bin: BlockPoseSmoothed | BinPoseSmoothed) -> str:
+            p = block_or_bin.position.point
+            return f"{color_to_str(block_or_bin.color)} block at ({p.x:.2f}, {p.y:.2f}, {p.z:.2f})"
+
+        blocks_str = ", ".join(log_block_bin(b) for b in self.blocks)
+        bins_str = ", ".join(log_block_bin(b) for b in self.bins)
+
         self.get_logger().info(
-            f"Current phase: {self.state}\nKnown blocks: {self.blocks}\nKnown bins: {self.bins}"
+            f"Current phase: {self.state}\n"
+            f"Known blocks: [{blocks_str}]\n"
+            f"Known bins: [{bins_str}]"
         )
 
     def wait(self):
