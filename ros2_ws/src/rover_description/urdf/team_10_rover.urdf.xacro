@@ -6,6 +6,7 @@
   <!-- ===================== -->
 
   <xacro:arg name="use_gazebo" default="false"/>
+  <xacro:arg name="use_arm" default="true"/>
 
   <xacro:arg name="arm_xyz" default="0.0880 0 0.0585"/>
   <xacro:arg name="arm_rpy" default="0 0 0"/>
@@ -48,8 +49,10 @@
   <!-- Include myCobot280pi  -->
   <!-- ===================== -->
 
-  <xacro:include filename="$(find rover_description)/urdf/assemblies/mycobot_280_pi_custom.urdf.xacro"/>
-  <xacro:mycobot_280_pi_custom prefix="arm_" />
+  <xacro:if value="$(arg use_arm)">
+    <xacro:include filename="$(find rover_description)/urdf/assemblies/mycobot_280_pi_custom.urdf.xacro"/>
+    <xacro:mycobot_280_pi_custom prefix="arm_" />
+  </xacro:if>
 
   <!-- ===================== -->
   <!-- Custom Links (Sensors) -->
@@ -169,11 +172,13 @@
   <!-- ===================== -->
 
   <!-- Attach manipulator to LeoRover -->
-  <joint name="arm_mount_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="arm_joint1"/>
-    <origin xyz="$(arg arm_xyz)" rpy="$(arg arm_rpy)"/>
-  </joint>
+  <xacro:if value="$(arg use_arm)">
+    <joint name="arm_mount_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="arm_joint1"/>
+      <origin xyz="$(arg arm_xyz)" rpy="$(arg arm_rpy)"/>
+    </joint>
+  </xacro:if>
 
   <!-- Attach LIDAR -->
   <joint name="lidar_joint" type="fixed">
