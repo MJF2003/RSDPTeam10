@@ -12,3 +12,4 @@ __pycache__/
 ros2_ws/src/mycobot_ros2
 ros2_ws/src/warehouse_ros_mongo
 
+.codex

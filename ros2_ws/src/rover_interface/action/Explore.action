@@ -1,10 +1,22 @@
-# Action to signal a generic explore action to the navigation node
-# empty action - we just want to tell the node to explore
+float32 max_runtime_sec
+bool run_until_cancelled
 ---
-# Whether the action was successfully concluded
 bool success
-# Human-readable terminal status
 string message
+float32 elapsed_time_sec
+string final_state
+uint32 goals_sent
+uint32 goals_succeeded
+uint32 goals_failed
 ---
-# Remaining 
-float32 time_elapsed
+string current_state
+float32 elapsed_time_sec
+float32 robot_x
+float32 robot_y
+float32 current_goal_x
+float32 current_goal_y
+uint32 frontier_cluster_count
+uint32 frontier_candidate_count
+uint32 goals_sent
+uint32 goals_succeeded
+uint32 goals_failed
