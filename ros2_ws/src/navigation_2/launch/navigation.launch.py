@@ -3,6 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterFile
@@ -30,6 +31,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('params_file')
     autostart = LaunchConfiguration('autostart')
+    run_explore_server = LaunchConfiguration('run_explore_server')
 
     configured_params = ParameterFile(
         RewrittenYaml(
@@ -73,6 +75,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('params_file', default_value=default_params_file),
         DeclareLaunchArgument('autostart', default_value='true'),
+        DeclareLaunchArgument('run_explore_server', default_value='true'),
 
         # 1. Controller Server
         Node(
@@ -129,4 +132,12 @@ def generate_launch_description():
             executable='navigation_service_node',
             output='screen',
             parameters=[{'use_sim_time': use_sim_time}]),
+
+        # 8. Frontier Exploration Action Server
+        Node(
+            package='leo_explore',
+            executable='explore_action_server',
+            output='screen',
+            parameters=[{'use_sim_time': use_sim_time}],
+            condition=IfCondition(run_explore_server)),
     ])

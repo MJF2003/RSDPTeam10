@@ -13,6 +13,7 @@ from rover_controller.navigation_goals import (
     quaternion_to_yaw,
     yaw_to_quaternion,
 )
+from rover_interface.action import Explore as ExploreAction
 from rover_interface.action import ManipulateBlock, NavigateToPos
 from rover_interface.msg import (
     BinPoseSmoothed,
@@ -81,6 +82,9 @@ class ControllerNode(Node):
         self.min_goal_vector_length_m = float(
             self.declare_parameter("min_goal_vector_length_m", 1e-3).value
         )
+        self.explore_goal_timeout_sec = float(
+            self.declare_parameter("explore_goal_timeout_sec", 10.0).value
+        )
         self.tf_lookup_timeout = Duration(
             seconds=float(self.declare_parameter("tf_lookup_timeout_sec", 0.2).value)
         )
@@ -124,6 +128,20 @@ class ControllerNode(Node):
         )
         self.nav_goal_in_flight = False
 
+        self.explore_action_topic = str(
+            self.declare_parameter("explore_action_name", "/explore").value
+        )
+        self.get_logger().info(
+            f"Connecting to exploration action server {self.explore_action_topic=}"
+        )
+        self.explore_action_client = ActionClient(
+            self,
+            ExploreAction,
+            self.explore_action_topic,
+        )
+        self.explore_goal_in_flight = False
+        self.last_explore_wait_log_time = 0.0
+
         manip_action_topic = "/manipulate_block"
         self.get_logger().info(
             f"Connecting to manipulation action server {manip_action_topic=}"
@@ -135,6 +153,10 @@ class ControllerNode(Node):
         )
         self.manip_goal_in_flight = False
         self.manip_goal_operation: int | None = None
+        self.required_startup_action_clients = (
+            self.nav_action_client,
+            self.manip_action_client,
+        )
 
         # Spin main controller loop
         controller_period = 0.1
@@ -183,13 +205,9 @@ class ControllerNode(Node):
                 self.get_logger().info(f"Waiting for publisher on {sub.topic_name}...")
                 return
 
-        for attr in self.__dict__.values():
-            if isinstance(attr, ActionClient):
-                if not attr.server_is_ready():
-                    # self.get_logger().info(
-                    #     f"Waiting for action server {attr._action_name}..."
-                    # )
-                    return
+        for action_client in self.required_startup_action_clients:
+            if not action_client.server_is_ready():
+                return
 
         self.get_logger().info("All interfaces ready, progressing to bin observation.")
         self.state = Phase.StartUp.OBSERVE_BINS
@@ -207,17 +225,73 @@ class ControllerNode(Node):
             self.get_logger().warning("DIDN'T SEE ALL BINS!")
 
     def explore(self):
-        # Tbd whether these happen in the controller or the navigation node
-        # ideally should be in nav node
-        # self.get_logger().info("Beginning exploration!")
+        if self.explore_goal_in_flight:
+            return
 
-        # First - if we have a target block, move to the Approach Phase
         if self.target_block is not None:
             self.state = Phase.ApproachBlock.EXECUTE_NAV
             return
-        # Otherwise - begin executing an ExploreMove
-        # self.get_logger().info("Pretending to explore")
-        return
+
+        self.send_exploration_goal()
+
+    # ------------------------ EXPLORATION ----------------------------------------
+    def send_exploration_goal(self) -> bool:
+        if self.explore_goal_in_flight:
+            return False
+
+        if not self.explore_action_client.wait_for_server(timeout_sec=0.5):
+            now_sec = self.get_clock().now().nanoseconds / 1e9
+            if now_sec - self.last_explore_wait_log_time >= 5.0:
+                self.last_explore_wait_log_time = now_sec
+                self.get_logger().warn(
+                    "Exploration action server "
+                    f"'{self.explore_action_topic}' is not available."
+                )
+            return False
+
+        goal = ExploreAction.Goal()
+        goal.max_runtime_sec = self.explore_goal_timeout_sec
+        goal.run_until_cancelled = False
+
+        self.explore_goal_in_flight = True
+        self.get_logger().info(
+            f"Sending exploration goal for {self.explore_goal_timeout_sec:.1f}s"
+        )
+
+        goal_future = self.explore_action_client.send_goal_async(
+            goal,
+            feedback_callback=self._explore_feedback_callback,
+        )
+        goal_future.add_done_callback(self._explore_goal_response_callback)
+        return True
+
+    def _explore_feedback_callback(self, _feedback_msg):
+        pass
+
+    def _explore_goal_response_callback(self, future):
+        goal_handle = future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            self.explore_goal_in_flight = False
+            self.get_logger().error("Exploration goal was rejected.")
+            return
+
+        self.get_logger().info("Exploration goal accepted.")
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._explore_result_callback)
+
+    def _explore_result_callback(self, future):
+        self.explore_goal_in_flight = False
+        result = future.result().result
+        status = "SUCCESS" if result.success else "FAILURE"
+        self.get_logger().info(
+            f"Exploration result {status}: final_state='{result.final_state}', "
+            f"goals_sent={result.goals_sent}, "
+            f"goals_succeeded={result.goals_succeeded}, "
+            f"goals_failed={result.goals_failed}, message='{result.message}'"
+        )
+
+        if self.target_block is not None:
+            self.state = Phase.ApproachBlock.EXECUTE_NAV
 
     def block_pose_callback(self, msg: BlockPoseSmoothedArray):
         # don't pay attention if we're doing a grasp or deposition
