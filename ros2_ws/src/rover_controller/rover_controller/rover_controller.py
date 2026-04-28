@@ -194,10 +194,6 @@ class ControllerNode(Node):
                 self.get_logger().warn(f"Unexpected state {self.state=}")
 
     def log_status(self):
-        # self.get_logger().info(
-        #     f"Current phase: {self.state}\nKnown blocks: {self.blocks}\nKnown bins: {self.bins}"
-        # )
-        #
         def log_block_bin(block_or_bin: BlockPoseSmoothed | BinPoseSmoothed) -> str:
             p = block_or_bin.position.point
             return f"{color_to_str(block_or_bin.color)} at ({p.x:.2f}, {p.y:.2f})"
@@ -319,6 +315,7 @@ class ControllerNode(Node):
                     f"Targeting {color_to_str(block.color)} block, ignoring collected blocks {self.collected=}"
                 )
                 self.target_block = block
+                # TODO: cancel exploration
 
     def bin_pose_callback(self, msg: BinPoseSmoothedArray):
         # don't pay attention if we're doing a grasp or deposition

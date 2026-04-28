@@ -67,4 +67,6 @@ ros2 topic pub /cv/bin_poses rover_interface/msg/BinPoseObservation "{
 TODOS: ~fix explore server waiting for map~ 
 TODOS: ~alternate map which places a wall between the rover and the blocks~ 
 TODOS: ~Optional argument to the rover_description, so that in sim we can just not render the arm (because it's making everything fucking slow)~
-TODOS: Can we ignore some stuff in the colcon build?
+TODOS: ~Can we ignore some stuff in the colcon build?~
+TODOS: For the sim vibe test - we want to cancel exploration when we see a block.
+TODOS: Controller needs to update the costmap with block/bin positions
