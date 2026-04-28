@@ -530,6 +530,9 @@ class ExploreActionServer(Node):
         best_goal = None
         best_score = None
         passed_count = 0
+        no_backoff_count = 0
+        blacklisted_count = 0
+        too_close_count = 0
 
         for cluster in clusters:
             frontier_gx, frontier_gy = self.pick_cluster_representative(cluster)
@@ -541,16 +544,19 @@ class ExploreActionServer(Node):
                 robot_gy,
             )
             if backed is None:
+                no_backoff_count += 1
                 continue
 
             goal_gx, goal_gy = backed
             wx, wy = self.grid_to_world(goal_gx, goal_gy, info)
 
             if self.is_blacklisted(wx, wy):
+                blacklisted_count += 1
                 continue
 
             dist = math.hypot(wx - rx, wy - ry)
             if dist < self.min_goal_distance:
+                too_close_count += 1
                 continue
 
             size = len(cluster)
@@ -571,7 +577,14 @@ class ExploreActionServer(Node):
         self.get_logger().info(f'Frontier candidates after filtering: {passed_count}')
 
         if best_goal is None:
-            self.get_logger().info('Clusters exist but all filtered out')
+            self.get_logger().info(
+                'Clusters exist but all filtered out: '
+                f'no_backoff={no_backoff_count}, '
+                f'blacklisted={blacklisted_count}, '
+                f'too_close={too_close_count}, '
+                f'min_goal_distance={self.min_goal_distance:.2f}, '
+                f'goal_backoff_cells={self.goal_backoff_cells}'
+            )
             return None
 
         return best_goal
@@ -634,6 +647,16 @@ class ExploreActionServer(Node):
         self.get_logger().info('Frontier NavigateToPose goal accepted')
         with self.state_lock:
             self.current_nav_goal_handle = nav_goal_handle
+            cancel_immediately = (
+                not self.exploring_active
+                or self.nav_cancel_requested
+            )
+
+        if cancel_immediately:
+            self.get_logger().info(
+                'Canceling NavigateToPose goal accepted after exploration stopped'
+            )
+            self.cancel_nav_goal_handle(nav_goal_handle)
 
         result_future = nav_goal_handle.get_result_async()
         result_future.add_done_callback(self.nav_goal_result_callback)
@@ -671,14 +694,7 @@ class ExploreActionServer(Node):
             if self.exploring_active:
                 self.current_state = self.STATE_PLANNING
 
-    def cancel_current_nav_goal(self):
-        with self.state_lock:
-            nav_goal_handle = self.current_nav_goal_handle
-            self.nav_cancel_requested = True
-
-        if nav_goal_handle is None:
-            return
-
+    def cancel_nav_goal_handle(self, nav_goal_handle):
         try:
             cancel_future = nav_goal_handle.cancel_goal_async()
             cancel_future.add_done_callback(
@@ -688,6 +704,16 @@ class ExploreActionServer(Node):
             )
         except Exception as e:
             self.get_logger().warn(f'Failed to cancel NavigateToPose goal: {e}')
+
+    def cancel_current_nav_goal(self):
+        with self.state_lock:
+            nav_goal_handle = self.current_nav_goal_handle
+            self.nav_cancel_requested = True
+
+        if nav_goal_handle is None:
+            return
+
+        self.cancel_nav_goal_handle(nav_goal_handle)
 
     # ------------------------------------------------------------
     # Main exploration planner loop
