@@ -4,17 +4,99 @@
     <static>true</static>
     <link name="link">
       <pose>0 0 0.08 0 0 0</pose>
-      <collision name="collision">
+      <collision name="bottom_collision">
+        <pose>0 0 -0.075 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.205 0.205 0.16</size>
+            <size>0.205 0.205 0.01</size>
           </box>
         </geometry>
       </collision>
-      <visual name="visual">
+      <collision name="north_wall_collision">
+        <pose>0 0.0975 0 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.205 0.205 0.16</size>
+            <size>0.205 0.01 0.16</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="south_wall_collision">
+        <pose>0 -0.0975 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.205 0.01 0.16</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="east_wall_collision">
+        <pose>0.0975 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.01 0.185 0.16</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="west_wall_collision">
+        <pose>-0.0975 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.01 0.185 0.16</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="bottom_visual">
+        <pose>0 0 -0.075 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.205 0.205 0.01</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.7 1</ambient>
+          <diffuse>0.2 0.3 0.9 1</diffuse>
+        </material>
+      </visual>
+      <visual name="north_wall_visual">
+        <pose>0 0.0975 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.205 0.01 0.16</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.7 1</ambient>
+          <diffuse>0.2 0.3 0.9 1</diffuse>
+        </material>
+      </visual>
+      <visual name="south_wall_visual">
+        <pose>0 -0.0975 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.205 0.01 0.16</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.7 1</ambient>
+          <diffuse>0.2 0.3 0.9 1</diffuse>
+        </material>
+      </visual>
+      <visual name="east_wall_visual">
+        <pose>0.0975 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.01 0.185 0.16</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.7 1</ambient>
+          <diffuse>0.2 0.3 0.9 1</diffuse>
+        </material>
+      </visual>
+      <visual name="west_wall_visual">
+        <pose>-0.0975 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.01 0.185 0.16</size>
           </box>
         </geometry>
         <material>
