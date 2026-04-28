@@ -141,6 +141,8 @@ def generate_launch_description():
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'plan_period': 0.5,
+                'min_goal_distance': 0.2,
+                'goal_backoff_cells': 2,
             }],
             condition=IfCondition(run_explore_server)),
     ])
