@@ -6,6 +6,7 @@ import time
 
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import Quaternion, Twist
+from lifecycle_msgs.srv import GetState
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
 import numpy as np
@@ -53,6 +54,8 @@ class ExploreActionServer(Node):
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('global_frame', 'map')
         self.declare_parameter('nav_action_name', '/navigate_to_pose')
+        self.declare_parameter('bt_navigator_state_service', 'bt_navigator/get_state')
+        self.declare_parameter('bt_navigator_state_timeout_sec', 0.5)
 
         # Cartographer free space is not always exactly 0.
         self.declare_parameter('free_threshold', 60)
@@ -79,6 +82,12 @@ class ExploreActionServer(Node):
         self.base_frame = self.get_parameter('base_frame').value
         self.global_frame = self.get_parameter('global_frame').value
         self.nav_action_name = self.get_parameter('nav_action_name').value
+        self.bt_navigator_state_service = self.get_parameter(
+            'bt_navigator_state_service'
+        ).value
+        self.bt_navigator_state_timeout_sec = float(
+            self.get_parameter('bt_navigator_state_timeout_sec').value
+        )
 
         self.free_threshold = int(self.get_parameter('free_threshold').value)
         self.occupied_threshold = int(self.get_parameter('occupied_threshold').value)
@@ -129,6 +138,12 @@ class ExploreActionServer(Node):
             callback_group=self.cb_group,
         )
 
+        self.bt_navigator_state_client = self.create_client(
+            GetState,
+            self.bt_navigator_state_service,
+            callback_group=self.cb_group,
+        )
+
         self._action_server = ActionServer(
             self,
             Explore,
@@ -156,6 +171,12 @@ class ExploreActionServer(Node):
         self.current_nav_goal_handle = None
         self.current_goal_xy = None
         self.nav_cancel_requested = False
+        self.bt_navigator_state = 'unknown'
+        self.bt_navigator_state_error = None
+        self.bt_navigator_state_future = None
+        self.bt_navigator_state_request_started = 0.0
+        self.last_nav2_wait_log_time = 0.0
+        self.last_nav2_wait_reason = ''
 
         self.blacklist = []  # [(x, y, expire_time_sec)]
 
@@ -592,6 +613,82 @@ class ExploreActionServer(Node):
     # ------------------------------------------------------------
     # Nav2 interaction
     # ------------------------------------------------------------
+    def pump_bt_navigator_state(self):
+        if self.bt_navigator_state_future is not None:
+            if self.bt_navigator_state_future.done():
+                future = self.bt_navigator_state_future
+                self.bt_navigator_state_future = None
+                try:
+                    result = future.result()
+                except Exception as e:
+                    self.bt_navigator_state = 'unknown'
+                    self.bt_navigator_state_error = (
+                        f'Failed to query {self.bt_navigator_state_service}: '
+                        f'{type(e).__name__}: {e}'
+                    )
+                    return
+
+                if result is None:
+                    self.bt_navigator_state = 'unknown'
+                    self.bt_navigator_state_error = (
+                        f'{self.bt_navigator_state_service} returned no result.'
+                    )
+                    return
+
+                self.bt_navigator_state = result.current_state.label or 'unknown'
+                self.bt_navigator_state_error = None
+                return
+
+            if (
+                time.monotonic() - self.bt_navigator_state_request_started
+                >= self.bt_navigator_state_timeout_sec
+            ):
+                self.bt_navigator_state = 'unknown'
+                self.bt_navigator_state_error = (
+                    f'Timed out querying {self.bt_navigator_state_service}.'
+                )
+                self.bt_navigator_state_future = None
+            return
+
+        if not self.bt_navigator_state_client.wait_for_service(timeout_sec=0.0):
+            self.bt_navigator_state = 'unknown'
+            self.bt_navigator_state_error = (
+                f'Lifecycle service {self.bt_navigator_state_service} is unavailable.'
+            )
+            return
+
+        self.bt_navigator_state_request_started = time.monotonic()
+        self.bt_navigator_state_future = self.bt_navigator_state_client.call_async(
+            GetState.Request()
+        )
+
+    def get_nav2_not_ready_reason(self):
+        if not self.nav_client.wait_for_server(timeout_sec=0.0):
+            return f'NavigateToPose action server {self.nav_action_name} is unavailable.'
+
+        self.pump_bt_navigator_state()
+
+        if self.bt_navigator_state_error is not None:
+            return self.bt_navigator_state_error
+
+        if self.bt_navigator_state != 'active':
+            return (
+                'bt_navigator lifecycle state is '
+                f"'{self.bt_navigator_state}', not 'active'."
+            )
+
+        return None
+
+    def log_nav2_not_ready(self, reason):
+        now = time.monotonic()
+        if (
+            reason != self.last_nav2_wait_reason
+            or now - self.last_nav2_wait_log_time >= 5.0
+        ):
+            self.last_nav2_wait_log_time = now
+            self.last_nav2_wait_reason = reason
+            self.get_logger().warn(f'Waiting for Nav2 readiness: {reason}')
+
     def send_nav_goal(self, x, y, yaw, size, unknown_count):
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.global_frame
@@ -624,24 +721,43 @@ class ExploreActionServer(Node):
             nav_goal_handle = future.result()
         except Exception as e:
             self.get_logger().error(f'Failed to send NavigateToPose goal: {e}')
+            reason = self.get_nav2_not_ready_reason()
+            if reason is not None:
+                self.log_nav2_not_ready(reason)
             with self.state_lock:
-                self.nav_goal_in_progress = False
-                self.current_nav_goal_handle = None
-                self.current_goal_xy = None
-                self.goals_failed += 1
-            return
-
-        if not nav_goal_handle.accepted:
-            self.get_logger().warn('Frontier NavigateToPose goal rejected')
-            with self.state_lock:
-                if self.current_goal_xy is not None:
-                    self.add_blacklist(*self.current_goal_xy)
                 self.nav_goal_in_progress = False
                 self.current_nav_goal_handle = None
                 self.current_goal_xy = None
                 self.goals_failed += 1
                 if self.exploring_active:
-                    self.current_state = self.STATE_PLANNING
+                    self.current_state = (
+                        self.STATE_WAITING_FOR_NAV2
+                        if reason is not None
+                        else self.STATE_PLANNING
+                    )
+            return
+
+        if not nav_goal_handle.accepted:
+            reason = self.get_nav2_not_ready_reason()
+            if reason is None:
+                self.get_logger().warn('Frontier NavigateToPose goal rejected')
+            else:
+                self.get_logger().warn(
+                    'Frontier NavigateToPose goal rejected while Nav2 is not ready: '
+                    f'{reason}'
+                )
+                self.log_nav2_not_ready(reason)
+            with self.state_lock:
+                self.nav_goal_in_progress = False
+                self.current_nav_goal_handle = None
+                self.current_goal_xy = None
+                self.goals_failed += 1
+                if self.exploring_active:
+                    self.current_state = (
+                        self.STATE_WAITING_FOR_NAV2
+                        if reason is not None
+                        else self.STATE_PLANNING
+                    )
             return
 
         self.get_logger().info('Frontier NavigateToPose goal accepted')
@@ -736,9 +852,10 @@ class ExploreActionServer(Node):
         if nav_goal_in_progress:
             return
 
-        if not self.nav_client.wait_for_server(timeout_sec=0.2):
+        nav2_not_ready_reason = self.get_nav2_not_ready_reason()
+        if nav2_not_ready_reason is not None:
             self.set_state(self.STATE_WAITING_FOR_NAV2)
-            self.get_logger().warn('NavigateToPose action server not ready')
+            self.log_nav2_not_ready(nav2_not_ready_reason)
             return
 
         robot_xy = self.get_robot_xy()
