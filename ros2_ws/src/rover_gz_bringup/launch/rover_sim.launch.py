@@ -78,6 +78,14 @@ def generate_launch_description():
         description="Launch Gazebo without the GUI and use headless rendering.",
     )
 
+    use_arm = DeclareLaunchArgument(
+        "use_arm",
+        default_value="true",
+        description=(
+            "Include the manipulator arm in the spawned robot description."
+        ),
+    )
+
     # Setup to launch the simulator and Gazebo world
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -101,7 +109,10 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_project_gazebo, "launch", "spawn_robot.launch.py")
         ),
-        launch_arguments={"robot_ns": LaunchConfiguration("robot_ns")}.items(),
+        launch_arguments={
+            "robot_ns": LaunchConfiguration("robot_ns"),
+            "use_arm": LaunchConfiguration("use_arm"),
+        }.items(),
     )
 
     # Bridge ROS topics and Gazebo messages for establishing communication
@@ -146,6 +157,7 @@ def generate_launch_description():
             sim_world,
             robot_ns,
             headless,
+            use_arm,
             gz_sim,
             gz_sim_headless,
             spawn_robot,

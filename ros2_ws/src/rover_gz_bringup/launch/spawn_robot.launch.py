@@ -30,8 +30,13 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
+def spawn_robot(
+    context: LaunchContext,
+    namespace: LaunchConfiguration,
+    use_arm: LaunchConfiguration,
+):
     robot_ns = context.perform_substitution(namespace)
+    use_arm_value = context.perform_substitution(use_arm)
 
     robot_desc = xacro.process(
         os.path.join(
@@ -39,7 +44,11 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
             "urdf",
             "team_10_rover.urdf.xacro",
         ),
-        mappings={"use_gazebo": "true", "robot_ns": robot_ns},
+        mappings={
+            "use_gazebo": "true",
+            "use_arm": use_arm_value,
+            "robot_ns": robot_ns,
+        },
     )
 
     if robot_ns == "":
@@ -146,9 +155,21 @@ def generate_launch_description():
         default_value="",
         description="Robot namespace",
     )
+    use_arm_argument = DeclareLaunchArgument(
+        "use_arm",
+        default_value="true",
+        description=(
+            "Include the manipulator arm in the spawned robot description."
+        ),
+    )
 
     namespace = LaunchConfiguration("robot_ns")
+    use_arm = LaunchConfiguration("use_arm")
 
     return LaunchDescription(
-        [name_argument, OpaqueFunction(function=spawn_robot, args=[namespace])]
+        [
+            name_argument,
+            use_arm_argument,
+            OpaqueFunction(function=spawn_robot, args=[namespace, use_arm]),
+        ]
     )
