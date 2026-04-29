@@ -64,10 +64,10 @@ ros2 topic pub /cv/bin_poses rover_interface/msg/BinPoseObservation "{
 # NEXT STEPS
 - IDEA - if the smoothing node finds a new node far from an old one with the same colour as another one, overwrite it - may be able handle the SLAM drifts
 
-TODOS: ~fix explore server waiting for map~ 
-TODOS: ~alternate map which places a wall between the rover and the blocks~ 
-TODOS: ~Optional argument to the rover_description, so that in sim we can just not render the arm (because it's making everything fucking slow)~
-TODOS: ~Can we ignore some stuff in the colcon build?~
-TODOS: ~For the sim vibe test - we want to cancel exploration when we see a block.~
-TODOS: ~Controller needs to update the costmap with block/bin positions~
-TODOS: If the controller sees a bin observation on top of a block observation, then it should probably assume that that is a bin and overwrite the block observation?
+DONE: ~fix explore server waiting for map~ 
+DONE: ~alternate map which places a wall between the rover and the blocks~ 
+DONE: ~Optional argument to the rover_description, so that in sim we can just not render the arm (because it's making everything fucking slow)~
+DONE: ~Can we ignore some stuff in the colcon build?~
+DONE: ~For the sim vibe test - we want to cancel exploration when we see a block.~
+DONE: ~Controller needs to update the costmap with block/bin positions~
+DONE: If the controller sees a bin observation on top of a block observation, then it should probably assume that that is a bin and overwrite the block observation?
