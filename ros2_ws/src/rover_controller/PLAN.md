@@ -61,13 +61,20 @@ ros2 topic pub /cv/bin_poses rover_interface/msg/BinPoseObservation "{
 - When we run the longer-term policy, the rover ends up in the wrong location. Is that because, even in sim, /odom drifts? Or what else could be going on? How could I visualise it? What are the positions relative to? Would this be a problem if I'm maintaining things in the map frame?
 - The vision node (in sim) seems to be identifying blocks with unknown colours. How do we want to handle that case? And are they real blocks?
 
-# NEXT STEPS
-- IDEA - if the smoothing node finds a new node far from an old one with the same colour as another one, overwrite it - may be able handle the SLAM drifts
-
 DONE: ~fix explore server waiting for map~ 
 DONE: ~alternate map which places a wall between the rover and the blocks~ 
 DONE: ~Optional argument to the rover_description, so that in sim we can just not render the arm (because it's making everything fucking slow)~
 DONE: ~Can we ignore some stuff in the colcon build?~
 DONE: ~For the sim vibe test - we want to cancel exploration when we see a block.~
 DONE: ~Controller needs to update the costmap with block/bin positions~
-DONE: If the controller sees a bin observation on top of a block observation, then it should probably assume that that is a bin and overwrite the block observation?
+
+
+
+# NEXT STEPS
+- IDEA - if the smoothing node finds a new node far from an old one with the same colour as another one, overwrite it - may be able handle the SLAM drifts
+
+TODO: If the controller sees a bin observation on top of a block observation, then it should probably assume that that is a bin and overwrite the block observation?
+TODO: Controller code - if the vision recognitions are moving then it can run into the propose_nav_pose - I think that's just because it doesn't know the bin though.
+TODO: Chunyi code:
+  - Convert to action server 
+  - Test with smoothed nodes
