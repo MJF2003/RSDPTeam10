@@ -24,6 +24,7 @@ import os
 import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.launch_context import LaunchContext
 from launch.launch_description import LaunchDescription
 from launch.substitutions import LaunchConfiguration
@@ -34,6 +35,7 @@ def spawn_robot(
     context: LaunchContext,
     namespace: LaunchConfiguration,
     use_arm: LaunchConfiguration,
+    bridge_camera_images: LaunchConfiguration,
 ):
     robot_ns = context.perform_substitution(namespace)
     use_arm_value = context.perform_substitution(use_arm)
@@ -118,6 +120,7 @@ def spawn_robot(
         executable="image_bridge",
         name=node_name_prefix + "leo_image_bridge",
         arguments=[robot_ns + "/camera/image_raw"],
+        condition=IfCondition(bridge_camera_images),
         output="screen",
     )
 
@@ -127,6 +130,7 @@ def spawn_robot(
         executable="image_bridge",
         name=node_name_prefix + "depth_rgb_bridge",
         arguments=[robot_ns + "/depth_camera/image"],
+        condition=IfCondition(bridge_camera_images),
         output="screen",
     )
 
@@ -136,6 +140,7 @@ def spawn_robot(
         executable="image_bridge",
         name=node_name_prefix + "depth_depth_bridge",
         arguments=[robot_ns + "/depth_camera/depth_image"],
+        condition=IfCondition(bridge_camera_images),
         output="screen",
     )
 
@@ -162,14 +167,24 @@ def generate_launch_description():
             "Include the manipulator arm in the spawned robot description."
         ),
     )
+    bridge_camera_images_argument = DeclareLaunchArgument(
+        "bridge_camera_images",
+        default_value="true",
+        description="Bridge simulated camera image topics into ROS.",
+    )
 
     namespace = LaunchConfiguration("robot_ns")
     use_arm = LaunchConfiguration("use_arm")
+    bridge_camera_images = LaunchConfiguration("bridge_camera_images")
 
     return LaunchDescription(
         [
             name_argument,
             use_arm_argument,
-            OpaqueFunction(function=spawn_robot, args=[namespace, use_arm]),
+            bridge_camera_images_argument,
+            OpaqueFunction(
+                function=spawn_robot,
+                args=[namespace, use_arm, bridge_camera_images],
+            ),
         ]
     )

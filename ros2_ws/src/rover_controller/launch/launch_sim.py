@@ -38,6 +38,7 @@ def generate_launch_description():
             "robot_ns": robot_ns,
             "headless": LaunchConfiguration("headless"),
             "use_arm": LaunchConfiguration("use_arm"),
+            "bridge_camera_images": LaunchConfiguration("run_vision_true"),
         }.items(),
     )
 

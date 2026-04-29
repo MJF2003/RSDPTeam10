@@ -85,6 +85,11 @@ def generate_launch_description():
             "Include the manipulator arm in the spawned robot description."
         ),
     )
+    bridge_camera_images = DeclareLaunchArgument(
+        "bridge_camera_images",
+        default_value="true",
+        description="Bridge simulated camera image topics into ROS.",
+    )
 
     # Setup to launch the simulator and Gazebo world
     gz_sim = IncludeLaunchDescription(
@@ -112,6 +117,7 @@ def generate_launch_description():
         launch_arguments={
             "robot_ns": LaunchConfiguration("robot_ns"),
             "use_arm": LaunchConfiguration("use_arm"),
+            "bridge_camera_images": LaunchConfiguration("bridge_camera_images"),
         }.items(),
     )
 
@@ -158,6 +164,7 @@ def generate_launch_description():
             robot_ns,
             headless,
             use_arm,
+            bridge_camera_images,
             gz_sim,
             gz_sim_headless,
             spawn_robot,

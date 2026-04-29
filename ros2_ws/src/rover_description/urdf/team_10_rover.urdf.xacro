@@ -84,7 +84,7 @@
     <gazebo reference="lidar_link">
       <sensor name="rplidar_a2m12" type="gpu_lidar">
         <always_on>true</always_on>
-        <visualize>true</visualize> 
+        <visualize>false</visualize>
         <update_rate>10.0</update_rate>
         <topic>scan</topic>
         <gz_frame_id>lidar_link</gz_frame_id>
@@ -143,7 +143,7 @@
     <gazebo reference="depth_camera_link">
       <sensor name="depth_camera_sensor" type="rgbd_camera">
         <always_on>true</always_on>
-        <visualize>true</visualize>
+        <visualize>false</visualize>
         <update_rate>30.0</update_rate>
         <topic>depth_camera</topic>
         <gz_frame_id>depth_camera_optical_frame</gz_frame_id>
