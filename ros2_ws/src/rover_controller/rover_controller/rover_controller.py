@@ -235,6 +235,8 @@ class ControllerNode(Node):
             case _:
                 self.get_logger().warn(f"Unexpected state {self.state=}")
 
+        self.publish_state_marker()
+
     def publish_state_marker(self):
         marker = Marker()
         marker.header.frame_id = self.state_marker_frame
@@ -266,7 +268,6 @@ class ControllerNode(Node):
             f"Known blocks: [{blocks_str}]\n"
             f"Known bins: [{bins_str}]"
         )
-        self.publish_state_marker()
 
     def wait(self):
         "Waits until all expected topics and action servers are ready"
