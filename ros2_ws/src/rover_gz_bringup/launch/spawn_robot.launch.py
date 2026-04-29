@@ -115,14 +115,14 @@ def spawn_robot(
     )
 
     # Camera image bridge
-    image_bridge = Node(
-        package="ros_gz_image",
-        executable="image_bridge",
-        name=node_name_prefix + "leo_image_bridge",
-        arguments=[robot_ns + "/camera/image_raw"],
-        condition=IfCondition(bridge_camera_images),
-        output="screen",
-    )
+    # image_bridge = Node(
+    #     package="ros_gz_image",
+    #     executable="image_bridge",
+    #     name=node_name_prefix + "leo_image_bridge",
+    #     arguments=[robot_ns + "/camera/image_raw"],
+    #     condition=IfCondition(bridge_camera_images),
+    #     output="screen",
+    # )
 
     # Depth Cam RGB image bridge
     depth_cam_rgb = Node(
@@ -148,7 +148,7 @@ def spawn_robot(
         robot_state_publisher,
         leo_rover,
         topic_bridge,
-        image_bridge,
+        # image_bridge,
         depth_cam_rgb,
         depth_cam_depth,
     ]
@@ -163,9 +163,7 @@ def generate_launch_description():
     use_arm_argument = DeclareLaunchArgument(
         "use_arm",
         default_value="true",
-        description=(
-            "Include the manipulator arm in the spawned robot description."
-        ),
+        description=("Include the manipulator arm in the spawned robot description."),
     )
     bridge_camera_images_argument = DeclareLaunchArgument(
         "bridge_camera_images",
