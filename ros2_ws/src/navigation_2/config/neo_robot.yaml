@@ -2,7 +2,7 @@ bt_navigator:
   ros__parameters:
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /odom
+    odom_topic: /wheel_odom
     bt_loop_duration: 10
     default_server_timeout: 20
     enable_groot_monitoring: True
@@ -22,7 +22,7 @@ controller_server:
     controller_plugins: ["FollowPath"]
     controller_frequency: 20.0
     failure_tolerance: 0.3
-    odom_topic: "odom"
+    odom_topic: "/wheel_odom"
     goal_checker_plugins: ["general_goal_checker"]
     progress_checker_plugin: "progress_checker"
 

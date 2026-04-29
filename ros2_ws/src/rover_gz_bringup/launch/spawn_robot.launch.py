@@ -111,6 +111,9 @@ def spawn_robot(
                 "qos_overrides./tf_static.publisher.durability": "transient_local",
             }
         ],
+        remappings=[
+            (robot_ns + "/odom", robot_ns + "/wheel_odom"),
+        ],
         output="screen",
     )
 

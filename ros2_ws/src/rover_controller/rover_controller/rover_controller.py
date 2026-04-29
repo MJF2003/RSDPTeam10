@@ -101,7 +101,9 @@ class ControllerNode(Node):
             self.declare_parameter("cmd_vel_topic", "/cmd_vel").value
         )
         self.state_marker_topic = str(
-            self.declare_parameter("state_marker_topic", "/controller/state_marker").value
+            self.declare_parameter(
+                "state_marker_topic", "/controller/state_marker"
+            ).value
         )
         self.state_marker_frame = str(
             self.declare_parameter(
