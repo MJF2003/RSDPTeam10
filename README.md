@@ -16,6 +16,7 @@ A quick explainer of the individual packages is given below. Contributors should
 
 - `rover_interface` Defines the messages and actions used by other packages.
 - `rover_controller` Defines a finite state machine which tracks mission progress and executes the main plan.
+- `leo_explore` Provides the frontier exploration action server used to request autonomous map exploration.
 - `rover_decription` Defines a modularised URDF of the team robot to be used in both sim and for real transform tree.
 - `rsdp_perception` Implements the computer vision sensing logic, using a DepthCamera. To run this node you need to follow some more installation steps - take a look at the vision README at `ros2_ws/src/rsdp_perception/README.md`
 
@@ -49,6 +50,12 @@ ros2 launch rover_controller launch_sim.py run_nav_debug_overlay:=true run_visio
 Terminal 2: (start the sim and wait 5-10s so the /map frame is populated before running this!)
 ```bash
 ros2 launch navigation_2 navigation.launch.py use_sim_time:=true
+```
+
+Terminal 3: start frontier exploration when you want the rover to explore the map using the Nav2 stack launched above.
+```bash
+ros2 run leo_explore explore_action_server --ros-args -p use_sim_time:=true
+ros2 action send_goal /explore rover_interface/action/Explore "{max_runtime_sec: 120.0, run_until_cancelled: false}"
 ```
 
 ## Launch the SLAM Node

@@ -1,23 +1,24 @@
 <?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>navigation_2</name>
+  <name>leo_explore</name>
   <version>0.0.0</version>
-  <description>Navigation Package</description>
+  <description>Frontier exploration action server for the rover.</description>
   <maintainer email="student49@todo.todo">student49</maintainer>
   <license>TODO: License declaration</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 
   <depend>rclpy</depend>
-  <depend>nav2_simple_commander</depend>
-  <depend>tf_transformations</depend>
-  <depend>tf2_ros</depend>
+  <depend>action_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>lifecycle_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>nav2_msgs</depend>
   <depend>rover_interface</depend>
-  <depend>leo_explore</depend>
+  <depend>tf2_ros</depend>
+
+  <exec_depend>python3-numpy</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

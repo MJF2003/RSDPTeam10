@@ -24,14 +24,21 @@ import os
 import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.launch_context import LaunchContext
 from launch.launch_description import LaunchDescription
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
+def spawn_robot(
+    context: LaunchContext,
+    namespace: LaunchConfiguration,
+    use_arm: LaunchConfiguration,
+    bridge_camera_images: LaunchConfiguration,
+):
     robot_ns = context.perform_substitution(namespace)
+    use_arm_value = context.perform_substitution(use_arm)
 
     robot_desc = xacro.process(
         os.path.join(
@@ -39,7 +46,11 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
             "urdf",
             "team_10_rover.urdf.xacro",
         ),
-        mappings={"use_gazebo": "true", "robot_ns": robot_ns},
+        mappings={
+            "use_gazebo": "true",
+            "use_arm": use_arm_value,
+            "robot_ns": robot_ns,
+        },
     )
 
     if robot_ns == "":
@@ -100,17 +111,21 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
                 "qos_overrides./tf_static.publisher.durability": "transient_local",
             }
         ],
+        remappings=[
+            (robot_ns + "/odom", robot_ns + "/wheel_odom"),
+        ],
         output="screen",
     )
 
     # Camera image bridge
-    image_bridge = Node(
-        package="ros_gz_image",
-        executable="image_bridge",
-        name=node_name_prefix + "leo_image_bridge",
-        arguments=[robot_ns + "/camera/image_raw"],
-        output="screen",
-    )
+    # image_bridge = Node(
+    #     package="ros_gz_image",
+    #     executable="image_bridge",
+    #     name=node_name_prefix + "leo_image_bridge",
+    #     arguments=[robot_ns + "/camera/image_raw"],
+    #     condition=IfCondition(bridge_camera_images),
+    #     output="screen",
+    # )
 
     # Depth Cam RGB image bridge
     depth_cam_rgb = Node(
@@ -118,6 +133,7 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
         executable="image_bridge",
         name=node_name_prefix + "depth_rgb_bridge",
         arguments=[robot_ns + "/depth_camera/image"],
+        condition=IfCondition(bridge_camera_images),
         output="screen",
     )
 
@@ -127,6 +143,7 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
         executable="image_bridge",
         name=node_name_prefix + "depth_depth_bridge",
         arguments=[robot_ns + "/depth_camera/depth_image"],
+        condition=IfCondition(bridge_camera_images),
         output="screen",
     )
 
@@ -134,7 +151,7 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
         robot_state_publisher,
         leo_rover,
         topic_bridge,
-        image_bridge,
+        # image_bridge,
         depth_cam_rgb,
         depth_cam_depth,
     ]
@@ -146,9 +163,29 @@ def generate_launch_description():
         default_value="",
         description="Robot namespace",
     )
+    use_arm_argument = DeclareLaunchArgument(
+        "use_arm",
+        default_value="true",
+        description=("Include the manipulator arm in the spawned robot description."),
+    )
+    bridge_camera_images_argument = DeclareLaunchArgument(
+        "bridge_camera_images",
+        default_value="true",
+        description="Bridge simulated camera image topics into ROS.",
+    )
 
     namespace = LaunchConfiguration("robot_ns")
+    use_arm = LaunchConfiguration("use_arm")
+    bridge_camera_images = LaunchConfiguration("bridge_camera_images")
 
     return LaunchDescription(
-        [name_argument, OpaqueFunction(function=spawn_robot, args=[namespace])]
+        [
+            name_argument,
+            use_arm_argument,
+            bridge_camera_images_argument,
+            OpaqueFunction(
+                function=spawn_robot,
+                args=[namespace, use_arm, bridge_camera_images],
+            ),
+        ]
     )

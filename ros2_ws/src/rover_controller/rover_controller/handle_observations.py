@@ -19,6 +19,8 @@ from rover_interface.msg import (
     BlockShape,
 )
 
+UNKNOWN_COLOR = 255
+
 
 class AggregateObservations(Node):
     def __init__(self):
@@ -197,8 +199,8 @@ class AggregateObservations(Node):
 
         self.block_frame_id = self.target_frame
         for observation in msg.observations:
-            if int(observation.color) == 255:
-                return  # ignore blocks of unknown colour
+            if int(observation.color) == UNKNOWN_COLOR:
+                continue  # ignore blocks of unknown colour
             pos = self._position_from_pose(
                 observation.pose, source_frame, msg.header.stamp, transform
             )
@@ -261,6 +263,8 @@ class AggregateObservations(Node):
 
         self.bin_frame_id = self.target_frame
         for observation in msg.observations:
+            if int(observation.color) == UNKNOWN_COLOR:
+                continue  # ignore bins of unknown colour
             pos = self._position_from_pose(
                 observation.pose, source_frame, msg.header.stamp, transform
             )

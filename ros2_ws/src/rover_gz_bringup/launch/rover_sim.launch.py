@@ -78,6 +78,19 @@ def generate_launch_description():
         description="Launch Gazebo without the GUI and use headless rendering.",
     )
 
+    use_arm = DeclareLaunchArgument(
+        "use_arm",
+        default_value="true",
+        description=(
+            "Include the manipulator arm in the spawned robot description."
+        ),
+    )
+    bridge_camera_images = DeclareLaunchArgument(
+        "bridge_camera_images",
+        default_value="true",
+        description="Bridge simulated camera image topics into ROS.",
+    )
+
     # Setup to launch the simulator and Gazebo world
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -101,7 +114,11 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_project_gazebo, "launch", "spawn_robot.launch.py")
         ),
-        launch_arguments={"robot_ns": LaunchConfiguration("robot_ns")}.items(),
+        launch_arguments={
+            "robot_ns": LaunchConfiguration("robot_ns"),
+            "use_arm": LaunchConfiguration("use_arm"),
+            "bridge_camera_images": LaunchConfiguration("bridge_camera_images"),
+        }.items(),
     )
 
     # Bridge ROS topics and Gazebo messages for establishing communication
@@ -146,6 +163,8 @@ def generate_launch_description():
             sim_world,
             robot_ns,
             headless,
+            use_arm,
+            bridge_camera_images,
             gz_sim,
             gz_sim_headless,
             spawn_robot,

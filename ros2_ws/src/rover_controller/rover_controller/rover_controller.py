@@ -1,18 +1,27 @@
 from enum import Enum, auto
 
 import rclpy
-from geometry_msgs.msg import PointStamped, PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped, Twist
 from rclpy.action.client import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Header
+from tf2_geometry_msgs import do_transform_point
 from tf2_ros import Buffer, TransformException, TransformListener
+from visualization_msgs.msg import Marker
 
 from rover_controller.navigation_goals import (
     compute_standoff_pose,
     quaternion_to_yaw,
     yaw_to_quaternion,
 )
+from rover_controller.semantic_obstacles import (
+    SemanticObstacle,
+    build_obstacle_cloud,
+)
+from rover_interface.action import Explore as ExploreAction
 from rover_interface.action import ManipulateBlock, NavigateToPos
 from rover_interface.msg import (
     BinPoseSmoothed,
@@ -65,6 +74,10 @@ def color_to_str(color: BlockBinColor | int) -> str:
     }.get(color_value, f"UNKNOWN({color_value})")
 
 
+def state_to_str(state: Enum) -> str:
+    return f"{state.__class__.__name__}.{state.name}"
+
+
 class ControllerNode(Node):
     def __init__(self):
         super().__init__("controller_node")
@@ -81,11 +94,86 @@ class ControllerNode(Node):
         self.min_goal_vector_length_m = float(
             self.declare_parameter("min_goal_vector_length_m", 1e-3).value
         )
+        self.explore_goal_timeout_sec = float(
+            self.declare_parameter("explore_goal_timeout_sec", 30.0).value
+        )
+        self.cmd_vel_topic = str(
+            self.declare_parameter("cmd_vel_topic", "/cmd_vel").value
+        )
+        self.state_marker_topic = str(
+            self.declare_parameter(
+                "state_marker_topic", "/controller/state_marker"
+            ).value
+        )
+        self.state_marker_frame = str(
+            self.declare_parameter(
+                "state_marker_frame",
+                self.robot_base_frame,
+            ).value
+        )
+        self.state_marker_z_offset_m = float(
+            self.declare_parameter("state_marker_z_offset_m", 0.8).value
+        )
+        self.state_marker_text_height_m = float(
+            self.declare_parameter("state_marker_text_height_m", 0.2).value
+        )
+        self.startup_observation_duration_sec = float(
+            self.declare_parameter("startup_observation_duration_sec", 5.0).value
+        )
+        self.startup_observation_angular_z = float(
+            self.declare_parameter("startup_observation_angular_z", 1.0).value
+        )
+        self.startup_required_bin_count = int(
+            self.declare_parameter("startup_required_bin_count", 3).value
+        )
+        self.semantic_obstacles_enabled = bool(
+            self.declare_parameter("semantic_obstacles_enabled", True).value
+        )
+        self.semantic_obstacle_topic = str(
+            self.declare_parameter(
+                "semantic_obstacle_topic",
+                "/controller/semantic_obstacles",
+            ).value
+        )
+        self.semantic_obstacle_publish_period_sec = float(
+            self.declare_parameter(
+                "semantic_obstacle_publish_period_sec",
+                0.2,
+            ).value
+        )
+        self.semantic_block_radius_m = float(
+            self.declare_parameter("semantic_block_radius_m", 0.25).value
+        )
+        self.semantic_bin_radius_m = float(
+            self.declare_parameter("semantic_bin_radius_m", 0.35).value
+        )
+        self.semantic_fixed_keepout_radius_m = float(
+            self.declare_parameter("semantic_fixed_keepout_radius_m", 0.35).value
+        )
+        self.semantic_obstacle_point_spacing_m = float(
+            self.declare_parameter("semantic_obstacle_point_spacing_m", 0.05).value
+        )
+        self.semantic_obstacle_point_z_m = float(
+            self.declare_parameter("semantic_obstacle_point_z_m", 0.25).value
+        )
         self.tf_lookup_timeout = Duration(
             seconds=float(self.declare_parameter("tf_lookup_timeout_sec", 0.2).value)
         )
         self.tf_buffer = Buffer(node=self)
         self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.state_marker_pub = self.create_publisher(
+            Marker,
+            self.state_marker_topic,
+            10,
+        )
+        self.semantic_obstacle_pub = self.create_publisher(
+            PointCloud2,
+            self.semantic_obstacle_topic,
+            1,
+        )
+        self.startup_observation_start_time = None
 
         block_topic = "/controller/block_poses"
         # Observation Management
@@ -108,6 +196,7 @@ class ControllerNode(Node):
 
         self.blocks: list[BlockPoseSmoothed] = []
         self.collected: set[int] = set()  # stores ids of collected blocks
+        self.fixed_keepout_positions: dict[int, PointStamped] = {}
         self.bins: list[BinPoseSmoothed] = []
         self.target_block: None | BlockPoseSmoothed = None
         self.target_bin: None | BinPoseSmoothed = None
@@ -124,6 +213,22 @@ class ControllerNode(Node):
         )
         self.nav_goal_in_flight = False
 
+        self.explore_action_topic = str(
+            self.declare_parameter("explore_action_name", "/explore").value
+        )
+        self.get_logger().info(
+            f"Connecting to exploration action server {self.explore_action_topic=}"
+        )
+        self.explore_action_client = ActionClient(
+            self,
+            ExploreAction,
+            self.explore_action_topic,
+        )
+        self.explore_goal_in_flight = False
+        self.explore_goal_handle = None
+        self.explore_cancel_in_flight = False
+        self.last_explore_wait_log_time = 0.0
+
         manip_action_topic = "/manipulate_block"
         self.get_logger().info(
             f"Connecting to manipulation action server {manip_action_topic=}"
@@ -135,6 +240,10 @@ class ControllerNode(Node):
         )
         self.manip_goal_in_flight = False
         self.manip_goal_operation: int | None = None
+        self.required_startup_action_clients = (
+            self.nav_action_client,
+            self.manip_action_client,
+        )
 
         # Spin main controller loop
         controller_period = 0.1
@@ -142,6 +251,15 @@ class ControllerNode(Node):
         self.get_logger().info(
             f"Setting up main loop timer with frequency {1 / controller_period:.1f}Hz"
         )
+        if self.semantic_obstacles_enabled:
+            self.semantic_obstacle_timer = self.create_timer(
+                self.semantic_obstacle_publish_period_sec,
+                callback=self.publish_semantic_obstacles,
+            )
+            self.get_logger().info(
+                "Publishing semantic costmap obstacles on "
+                f"{self.semantic_obstacle_topic}"
+            )
 
         self.loop_count = 0  # var for controlling frequency of state logging
 
@@ -171,9 +289,38 @@ class ControllerNode(Node):
             case _:
                 self.get_logger().warn(f"Unexpected state {self.state=}")
 
+        self.publish_state_marker()
+
+    def publish_state_marker(self):
+        marker = Marker()
+        marker.header.frame_id = self.state_marker_frame
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "controller_state"
+        marker.id = 0
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+        marker.pose.position.z = self.state_marker_z_offset_m
+        marker.pose.orientation.w = 1.0
+        marker.scale.z = self.state_marker_text_height_m
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 1.0
+        marker.color.a = 1.0
+        marker.text = state_to_str(self.state)
+        self.state_marker_pub.publish(marker)
+
     def log_status(self):
+        def log_block_bin(block_or_bin: BlockPoseSmoothed | BinPoseSmoothed) -> str:
+            p = block_or_bin.position.point
+            return f"{color_to_str(block_or_bin.color)} at ({p.x:.2f}, {p.y:.2f})"
+
+        blocks_str = ", ".join(log_block_bin(b) for b in self.blocks)
+        bins_str = ", ".join(log_block_bin(b) for b in self.bins)
+
         self.get_logger().info(
-            f"Current phase: {self.state}\nKnown blocks: {self.blocks}\nKnown bins: {self.bins}"
+            f"Current phase: {self.state}\n"
+            f"Known blocks: [{blocks_str}]\n"
+            f"Known bins: [{bins_str}]"
         )
 
     def wait(self):
@@ -183,41 +330,145 @@ class ControllerNode(Node):
                 self.get_logger().info(f"Waiting for publisher on {sub.topic_name}...")
                 return
 
-        for attr in self.__dict__.values():
-            if isinstance(attr, ActionClient):
-                if not attr.server_is_ready():
-                    # self.get_logger().info(
-                    #     f"Waiting for action server {attr._action_name}..."
-                    # )
-                    return
+        for action_client in self.required_startup_action_clients:
+            if not action_client.server_is_ready():
+                return
 
         self.get_logger().info("All interfaces ready, progressing to bin observation.")
         self.state = Phase.StartUp.OBSERVE_BINS
 
     def observe_bins(self):
-        self.get_logger().info("I am observing O.O")
-        # Sends a movement command to Nav node - rotate 360 pls (can nav do that?)
-        # worst case it rotates 180 and just does it twice
-        # TODO(Alex): implement rotation action
-        # TODO(Alex): Remove the True check
-        if len(self.bins) >= 3 or True:
-            self.get_logger().info("BINS OBSERVED!")
-            self.state = Phase.Explore.EXPLORE
+        if self.startup_observation_start_time is None:
+            self.startup_observation_start_time = self.get_clock().now()
+            self.get_logger().info(
+                "Starting startup bin observation sweep for "
+                f"{self.startup_observation_duration_sec:.1f}s"
+            )
+
+        elapsed = (
+            self.get_clock().now() - self.startup_observation_start_time
+        ).nanoseconds / 1e9
+        if elapsed < self.startup_observation_duration_sec:
+            twist = Twist()
+            twist.angular.z = self.startup_observation_angular_z
+            self.cmd_vel_pub.publish(twist)
+            return
+
+        self.cmd_vel_pub.publish(Twist())
+        observed_bin_count = len(self.bins)
+        if observed_bin_count >= self.startup_required_bin_count:
+            self.get_logger().info(
+                f"Observed {observed_bin_count} bins during startup sweep."
+            )
         else:
-            self.get_logger().warning("DIDN'T SEE ALL BINS!")
+            self.get_logger().warning(
+                "Startup sweep completed with "
+                f"{observed_bin_count}/{self.startup_required_bin_count} "
+                "required bins observed; continuing to exploration."
+            )
+
+        self.state = Phase.Explore.EXPLORE
 
     def explore(self):
-        # Tbd whether these happen in the controller or the navigation node
-        # ideally should be in nav node
-        # self.get_logger().info("Beginning exploration!")
+        if self.explore_goal_in_flight:
+            return
 
-        # First - if we have a target block, move to the Approach Phase
         if self.target_block is not None:
             self.state = Phase.ApproachBlock.EXECUTE_NAV
             return
-        # Otherwise - begin executing an ExploreMove
-        # self.get_logger().info("Pretending to explore")
-        return
+
+        self.send_exploration_goal()
+
+    # ------------------------ EXPLORATION ----------------------------------------
+    def send_exploration_goal(self) -> bool:
+        if self.explore_goal_in_flight:
+            return False
+
+        if not self.explore_action_client.wait_for_server(timeout_sec=0.5):
+            now_sec = self.get_clock().now().nanoseconds / 1e9
+            if now_sec - self.last_explore_wait_log_time >= 5.0:
+                self.last_explore_wait_log_time = now_sec
+                self.get_logger().warn(
+                    "Exploration action server "
+                    f"'{self.explore_action_topic}' is not available."
+                )
+            return False
+
+        goal = ExploreAction.Goal()
+        goal.max_runtime_sec = self.explore_goal_timeout_sec
+        goal.run_until_cancelled = False
+
+        self.explore_goal_in_flight = True
+        self.get_logger().info(
+            f"Sending exploration goal for {self.explore_goal_timeout_sec:.1f}s"
+        )
+
+        goal_future = self.explore_action_client.send_goal_async(
+            goal,
+            feedback_callback=self._explore_feedback_callback,
+        )
+        goal_future.add_done_callback(self._explore_goal_response_callback)
+        return True
+
+    def _explore_feedback_callback(self, _feedback_msg):
+        pass
+
+    def _explore_goal_response_callback(self, future):
+        goal_handle = future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            self.explore_goal_in_flight = False
+            self.explore_goal_handle = None
+            self.explore_cancel_in_flight = False
+            self.get_logger().error("Exploration goal was rejected.")
+            return
+
+        self.explore_goal_handle = goal_handle
+        self.get_logger().info("Exploration goal accepted.")
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._explore_result_callback)
+        if self.target_block is not None:
+            self.cancel_exploration_goal()
+
+    def cancel_exploration_goal(self) -> bool:
+        if self.target_block is None:
+            return False
+
+        if self.explore_goal_handle is None:
+            return False
+
+        if self.explore_cancel_in_flight:
+            return False
+
+        self.explore_cancel_in_flight = True
+        self.get_logger().info("Canceling exploration after finding target block.")
+        cancel_future = self.explore_goal_handle.cancel_goal_async()
+        cancel_future.add_done_callback(self._explore_cancel_callback)
+        return True
+
+    def _explore_cancel_callback(self, future):
+        self.explore_cancel_in_flight = False
+        cancel_response = future.result()
+        goals_canceling = len(cancel_response.goals_canceling)
+        if goals_canceling > 0:
+            self.get_logger().info("Exploration cancel request accepted.")
+        else:
+            self.get_logger().warn("Exploration cancel request was not accepted.")
+
+    def _explore_result_callback(self, future):
+        self.explore_goal_in_flight = False
+        self.explore_goal_handle = None
+        self.explore_cancel_in_flight = False
+        result = future.result().result
+        status = "SUCCESS" if result.success else "FAILURE"
+        self.get_logger().info(
+            f"Exploration result {status}: final_state='{result.final_state}', "
+            f"goals_sent={result.goals_sent}, "
+            f"goals_succeeded={result.goals_succeeded}, "
+            f"goals_failed={result.goals_failed}, message='{result.message}'"
+        )
+
+        if self.target_block is not None:
+            self.state = Phase.ApproachBlock.EXECUTE_NAV
 
     def block_pose_callback(self, msg: BlockPoseSmoothedArray):
         # don't pay attention if we're doing a grasp or deposition
@@ -232,6 +483,8 @@ class ControllerNode(Node):
                     f"Targeting {color_to_str(block.color)} block, ignoring collected blocks {self.collected=}"
                 )
                 self.target_block = block
+                if self.state == Phase.Explore.EXPLORE:
+                    self.cancel_exploration_goal()
 
     def bin_pose_callback(self, msg: BinPoseSmoothedArray):
         # don't pay attention if we're doing a grasp or deposition
@@ -239,6 +492,104 @@ class ControllerNode(Node):
             return
         # parse and store bin poses
         self.bins = msg.bins  # type: ignore
+
+    # ------------------------ SEMANTIC COSTMAP OBSTACLES ------------------------
+    def publish_semantic_obstacles(self):
+        obstacles = self._build_semantic_obstacles()
+        header = Header()
+        header.frame_id = self.map_frame
+        header.stamp = self.get_clock().now().to_msg()
+
+        try:
+            cloud = build_obstacle_cloud(
+                header=header,
+                obstacles=obstacles,
+                point_spacing=self.semantic_obstacle_point_spacing_m,
+                point_z=self.semantic_obstacle_point_z_m,
+            )
+        except ValueError as exc:
+            self.get_logger().error(f"Cannot publish semantic obstacles: {exc}")
+            return
+
+        self.semantic_obstacle_pub.publish(cloud)
+
+    def _build_semantic_obstacles(self) -> list[SemanticObstacle]:
+        obstacles: list[SemanticObstacle] = []
+
+        for block in self.blocks:
+            if block.id in self.collected:
+                continue
+
+            obstacle = self._obstacle_from_point(
+                block.position,
+                self.semantic_block_radius_m,
+            )
+            if obstacle is not None:
+                obstacles.append(obstacle)
+
+        for bin_pose in self.bins:
+            obstacle = self._obstacle_from_point(
+                bin_pose.position,
+                self.semantic_bin_radius_m,
+            )
+            if obstacle is not None:
+                obstacles.append(obstacle)
+
+        for point in self.fixed_keepout_positions.values():
+            obstacle = self._obstacle_from_point(
+                point,
+                self.semantic_fixed_keepout_radius_m,
+            )
+            if obstacle is not None:
+                obstacles.append(obstacle)
+
+        return obstacles
+
+    def _obstacle_from_point(
+        self,
+        point: PointStamped,
+        radius: float,
+    ) -> SemanticObstacle | None:
+        point_in_map = self._point_in_map_frame(point)
+        if point_in_map is None:
+            return None
+
+        return SemanticObstacle(
+            x=float(point_in_map.point.x),
+            y=float(point_in_map.point.y),
+            radius=radius,
+        )
+
+    def _point_in_map_frame(self, point: PointStamped) -> PointStamped | None:
+        source_frame = point.header.frame_id.strip() or self.map_frame
+        if source_frame == self.map_frame:
+            return point
+
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self.map_frame,
+                source_frame,
+                point.header.stamp,
+                timeout=self.tf_lookup_timeout,
+            )
+        except TransformException as exc:
+            self.get_logger().warning(
+                "Cannot transform semantic obstacle point from "
+                f"'{source_frame}' to '{self.map_frame}': {exc}"
+            )
+            return None
+
+        return do_transform_point(point, transform)
+
+    @staticmethod
+    def _copy_point_stamped(point: PointStamped) -> PointStamped:
+        point_copy = PointStamped()
+        point_copy.header.frame_id = point.header.frame_id
+        point_copy.header.stamp = point.header.stamp
+        point_copy.point.x = point.point.x
+        point_copy.point.y = point.point.y
+        point_copy.point.z = point.point.z
+        return point_copy
 
     # ------------------------ NAVIGATION -----------------------------------------
     def navigate_to_pose(
@@ -497,6 +848,9 @@ class ControllerNode(Node):
                     return
 
                 self.collected.add(self.target_block.id)
+                self.fixed_keepout_positions[self.target_block.id] = (
+                    self._copy_point_stamped(self.target_block.position)
+                )
                 self.get_logger().info(f"Adding target block to {self.collected=}")
                 self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
                 return

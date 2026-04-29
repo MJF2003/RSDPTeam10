@@ -2,7 +2,7 @@ bt_navigator:
   ros__parameters:
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /odom
+    odom_topic: /wheel_odom
     bt_loop_duration: 10
     default_server_timeout: 20
     enable_groot_monitoring: True
@@ -22,7 +22,7 @@ controller_server:
     controller_plugins: ["FollowPath"]
     controller_frequency: 20.0
     failure_tolerance: 0.3
-    odom_topic: "odom"
+    odom_topic: "/wheel_odom"
     goal_checker_plugins: ["general_goal_checker"]
     progress_checker_plugin: "progress_checker"
 
@@ -56,7 +56,7 @@ controller_server:
       use_fixed_curvature_lookahead: False
       curvature_lookahead_dist: 0.35
       use_rotate_to_heading: True
-      rotate_to_heading_angular_vel: 1.8
+      rotate_to_heading_angular_vel: 1.0
       rotate_to_heading_min_angle: 0.5
       allow_reversing: False
       max_angular_accel: 2.0
@@ -89,8 +89,8 @@ local_costmap:
         z_resolution: 0.1
         z_voxels: 10
         max_obstacle_height: 1.0
-        mark_threshold: 2
-        observation_sources: scan
+        mark_threshold: 1
+        observation_sources: scan semantic_obstacles
         scan:
           topic: /scan
           max_obstacle_height: 1.0
@@ -102,12 +102,21 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
+        semantic_obstacles:
+          topic: /controller/semantic_obstacles
+          max_obstacle_height: 1.0
+          min_obstacle_height: 0.0
+          obstacle_max_range: 20.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+          data_type: "PointCloud2"
 
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      update_frequency: 5.0
+      publish_frequency: 2.0
       transform_tolerance: 2.0
       global_frame: map
       robot_base_frame: base_link
@@ -118,7 +127,7 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: scan
+        observation_sources: scan semantic_obstacles
         scan:
           topic: /scan
           max_obstacle_height: 1.0
@@ -130,6 +139,15 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
+        semantic_obstacles:
+          topic: /controller/semantic_obstacles
+          max_obstacle_height: 1.0
+          min_obstacle_height: 0.0
+          obstacle_max_range: 20.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+          data_type: "PointCloud2"
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
