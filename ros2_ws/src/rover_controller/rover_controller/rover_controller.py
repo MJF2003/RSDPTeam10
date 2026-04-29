@@ -6,6 +6,9 @@ from rclpy.action.client import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Header
+from tf2_geometry_msgs import do_transform_point
 from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import Marker
 
@@ -13,6 +16,10 @@ from rover_controller.navigation_goals import (
     compute_standoff_pose,
     quaternion_to_yaw,
     yaw_to_quaternion,
+)
+from rover_controller.semantic_obstacles import (
+    SemanticObstacle,
+    build_obstacle_cloud,
 )
 from rover_interface.action import Explore as ExploreAction
 from rover_interface.action import ManipulateBlock, NavigateToPos
@@ -117,6 +124,36 @@ class ControllerNode(Node):
         self.startup_required_bin_count = int(
             self.declare_parameter("startup_required_bin_count", 3).value
         )
+        self.semantic_obstacles_enabled = bool(
+            self.declare_parameter("semantic_obstacles_enabled", True).value
+        )
+        self.semantic_obstacle_topic = str(
+            self.declare_parameter(
+                "semantic_obstacle_topic",
+                "/controller/semantic_obstacles",
+            ).value
+        )
+        self.semantic_obstacle_publish_period_sec = float(
+            self.declare_parameter(
+                "semantic_obstacle_publish_period_sec",
+                0.2,
+            ).value
+        )
+        self.semantic_block_radius_m = float(
+            self.declare_parameter("semantic_block_radius_m", 0.25).value
+        )
+        self.semantic_bin_radius_m = float(
+            self.declare_parameter("semantic_bin_radius_m", 0.35).value
+        )
+        self.semantic_fixed_keepout_radius_m = float(
+            self.declare_parameter("semantic_fixed_keepout_radius_m", 0.35).value
+        )
+        self.semantic_obstacle_point_spacing_m = float(
+            self.declare_parameter("semantic_obstacle_point_spacing_m", 0.05).value
+        )
+        self.semantic_obstacle_point_z_m = float(
+            self.declare_parameter("semantic_obstacle_point_z_m", 0.25).value
+        )
         self.tf_lookup_timeout = Duration(
             seconds=float(self.declare_parameter("tf_lookup_timeout_sec", 0.2).value)
         )
@@ -128,6 +165,11 @@ class ControllerNode(Node):
             Marker,
             self.state_marker_topic,
             10,
+        )
+        self.semantic_obstacle_pub = self.create_publisher(
+            PointCloud2,
+            self.semantic_obstacle_topic,
+            1,
         )
         self.startup_observation_start_time = None
 
@@ -152,6 +194,7 @@ class ControllerNode(Node):
 
         self.blocks: list[BlockPoseSmoothed] = []
         self.collected: set[int] = set()  # stores ids of collected blocks
+        self.fixed_keepout_positions: dict[int, PointStamped] = {}
         self.bins: list[BinPoseSmoothed] = []
         self.target_block: None | BlockPoseSmoothed = None
         self.target_bin: None | BinPoseSmoothed = None
@@ -206,6 +249,15 @@ class ControllerNode(Node):
         self.get_logger().info(
             f"Setting up main loop timer with frequency {1 / controller_period:.1f}Hz"
         )
+        if self.semantic_obstacles_enabled:
+            self.semantic_obstacle_timer = self.create_timer(
+                self.semantic_obstacle_publish_period_sec,
+                callback=self.publish_semantic_obstacles,
+            )
+            self.get_logger().info(
+                "Publishing semantic costmap obstacles on "
+                f"{self.semantic_obstacle_topic}"
+            )
 
         self.loop_count = 0  # var for controlling frequency of state logging
 
@@ -438,6 +490,104 @@ class ControllerNode(Node):
             return
         # parse and store bin poses
         self.bins = msg.bins  # type: ignore
+
+    # ------------------------ SEMANTIC COSTMAP OBSTACLES ------------------------
+    def publish_semantic_obstacles(self):
+        obstacles = self._build_semantic_obstacles()
+        header = Header()
+        header.frame_id = self.map_frame
+        header.stamp = self.get_clock().now().to_msg()
+
+        try:
+            cloud = build_obstacle_cloud(
+                header=header,
+                obstacles=obstacles,
+                point_spacing=self.semantic_obstacle_point_spacing_m,
+                point_z=self.semantic_obstacle_point_z_m,
+            )
+        except ValueError as exc:
+            self.get_logger().error(f"Cannot publish semantic obstacles: {exc}")
+            return
+
+        self.semantic_obstacle_pub.publish(cloud)
+
+    def _build_semantic_obstacles(self) -> list[SemanticObstacle]:
+        obstacles: list[SemanticObstacle] = []
+
+        for block in self.blocks:
+            if block.id in self.collected:
+                continue
+
+            obstacle = self._obstacle_from_point(
+                block.position,
+                self.semantic_block_radius_m,
+            )
+            if obstacle is not None:
+                obstacles.append(obstacle)
+
+        for bin_pose in self.bins:
+            obstacle = self._obstacle_from_point(
+                bin_pose.position,
+                self.semantic_bin_radius_m,
+            )
+            if obstacle is not None:
+                obstacles.append(obstacle)
+
+        for point in self.fixed_keepout_positions.values():
+            obstacle = self._obstacle_from_point(
+                point,
+                self.semantic_fixed_keepout_radius_m,
+            )
+            if obstacle is not None:
+                obstacles.append(obstacle)
+
+        return obstacles
+
+    def _obstacle_from_point(
+        self,
+        point: PointStamped,
+        radius: float,
+    ) -> SemanticObstacle | None:
+        point_in_map = self._point_in_map_frame(point)
+        if point_in_map is None:
+            return None
+
+        return SemanticObstacle(
+            x=float(point_in_map.point.x),
+            y=float(point_in_map.point.y),
+            radius=radius,
+        )
+
+    def _point_in_map_frame(self, point: PointStamped) -> PointStamped | None:
+        source_frame = point.header.frame_id.strip() or self.map_frame
+        if source_frame == self.map_frame:
+            return point
+
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self.map_frame,
+                source_frame,
+                point.header.stamp,
+                timeout=self.tf_lookup_timeout,
+            )
+        except TransformException as exc:
+            self.get_logger().warning(
+                "Cannot transform semantic obstacle point from "
+                f"'{source_frame}' to '{self.map_frame}': {exc}"
+            )
+            return None
+
+        return do_transform_point(point, transform)
+
+    @staticmethod
+    def _copy_point_stamped(point: PointStamped) -> PointStamped:
+        point_copy = PointStamped()
+        point_copy.header.frame_id = point.header.frame_id
+        point_copy.header.stamp = point.header.stamp
+        point_copy.point.x = point.point.x
+        point_copy.point.y = point.point.y
+        point_copy.point.z = point.point.z
+        return point_copy
 
     # ------------------------ NAVIGATION -----------------------------------------
     def navigate_to_pose(
@@ -696,6 +846,9 @@ class ControllerNode(Node):
                     return
 
                 self.collected.add(self.target_block.id)
+                self.fixed_keepout_positions[self.target_block.id] = (
+                    self._copy_point_stamped(self.target_block.position)
+                )
                 self.get_logger().info(f"Adding target block to {self.collected=}")
                 self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
                 return

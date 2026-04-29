@@ -89,8 +89,8 @@ local_costmap:
         z_resolution: 0.1
         z_voxels: 10
         max_obstacle_height: 1.0
-        mark_threshold: 2
-        observation_sources: scan
+        mark_threshold: 1
+        observation_sources: scan semantic_obstacles
         scan:
           topic: /scan
           max_obstacle_height: 1.0
@@ -102,6 +102,15 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
+        semantic_obstacles:
+          topic: /controller/semantic_obstacles
+          max_obstacle_height: 1.0
+          min_obstacle_height: 0.0
+          obstacle_max_range: 20.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+          data_type: "PointCloud2"
 
 global_costmap:
   global_costmap:
@@ -118,7 +127,7 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: scan
+        observation_sources: scan semantic_obstacles
         scan:
           topic: /scan
           max_obstacle_height: 1.0
@@ -130,6 +139,15 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
+        semantic_obstacles:
+          topic: /controller/semantic_obstacles
+          max_obstacle_height: 1.0
+          min_obstacle_height: 0.0
+          obstacle_max_range: 20.0
+          obstacle_min_range: 0.0
+          clearing: False
+          marking: True
+          data_type: "PointCloud2"
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
