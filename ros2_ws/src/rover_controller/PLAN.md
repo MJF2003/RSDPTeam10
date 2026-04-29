@@ -1,9 +1,9 @@
 # TODOs for the controller and simulator
 
-1. Fill in the rest of the controller logic
-    1. Rotate on startup (how to coordinate with nav stub? Could send cmd_vel direct. Now think this will be simplest - although will require a new action server.)
+~1. Fill in the rest of the controller logic~
+    ~1. Rotate on startup (how to coordinate with nav stub? Could send cmd_vel direct. Now think this will be simplest - although will require a new action server.)~
     ~2. Explore action~ (Haotian sorting)
-    3. Handle action-in-flight checks - will get quite flabby...
+    ~3. Handle action-in-flight checks - will get quite flabby...~
     ~4. Manipulator~ 
     ~5. Return to bin - should be easy~
     ~6. Continue~
@@ -14,13 +14,13 @@
     ~1. Mike sorting~
 ~4. Integrate Depth camera mocking for the CV node proper~ 
 5. Integration with actual ROS packages as they come in. They must work in sim.
-6. Proper frames and tf transforms
+~6. Proper frames and tf transforms~
 ~7. Remaining action definitions (navigation and manipulator)~
-8. Visualisation setup
-    1. Current map and robot location in map 
-    2. Current estimates of block positions (and status)
-    3. Current estimates of bin positions 
-    4. Current phase of controller 
+8. ~Visualisation setup~
+    1. ~Current map and robot location in map~ 
+    2. ~Current estimates of block positions (and status)~
+    3. ~Current estimates of bin positions~ 
+    4. ~Current phase of controller~ 
 ~9. Cut back on some of the spammy logging out of the controller nodes - maybe set a heartbeat message which each node can set? Or something~
 10. The controller ignores block updates during some moves, but that doesn't stop the smoothing node from updating them - which the controller will then ingest the next time it moves to a new state. May or may not be a problem (in principle the block will be deposited by the time the controller accepts new observations)
 ~11. Add obstacles to the map~ (Mike handling)
@@ -68,5 +68,6 @@ TODOS: ~fix explore server waiting for map~
 TODOS: ~alternate map which places a wall between the rover and the blocks~ 
 TODOS: ~Optional argument to the rover_description, so that in sim we can just not render the arm (because it's making everything fucking slow)~
 TODOS: ~Can we ignore some stuff in the colcon build?~
-TODOS: For the sim vibe test - we want to cancel exploration when we see a block.
-TODOS: Controller needs to update the costmap with block/bin positions
+TODOS: ~For the sim vibe test - we want to cancel exploration when we see a block.~
+TODOS: ~Controller needs to update the costmap with block/bin positions~
+TODOS: If the controller sees a bin observation on top of a block observation, then it should probably assume that that is a bin and overwrite the block observation?
