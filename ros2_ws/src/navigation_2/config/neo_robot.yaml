@@ -56,7 +56,7 @@ controller_server:
       use_fixed_curvature_lookahead: False
       curvature_lookahead_dist: 0.35
       use_rotate_to_heading: True
-      rotate_to_heading_angular_vel: 1.8
+      rotate_to_heading_angular_vel: 1.0
       rotate_to_heading_min_angle: 0.5
       allow_reversing: False
       max_angular_accel: 2.0
@@ -115,8 +115,8 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      update_frequency: 5.0
+      publish_frequency: 2.0
       transform_tolerance: 2.0
       global_frame: map
       robot_base_frame: base_link
