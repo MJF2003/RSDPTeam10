@@ -11,7 +11,7 @@
   <xacro:arg name="arm_rpy" default="0 0 0"/>
 
   <xacro:arg name="lidar_xyz" default="0.0700 0 0.0380"/>
-  <xacro:arg name="lidar_rpy" default="0 0 0"/>
+  <xacro:arg name="lidar_rpy" default="0 0 3.14159"/>
 
   <xacro:arg name="camera_xyz" default="0.1746 0 0.0906"/>
   <xacro:arg name="camera_rpy" default="0 0.4712 0"/>
