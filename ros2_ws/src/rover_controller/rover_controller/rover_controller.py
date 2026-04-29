@@ -1,12 +1,13 @@
 from enum import Enum, auto
 
 import rclpy
-from geometry_msgs.msg import PointStamped, PoseStamped
+from geometry_msgs.msg import PointStamped, PoseStamped, Twist
 from rclpy.action.client import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
+from visualization_msgs.msg import Marker
 
 from rover_controller.navigation_goals import (
     compute_standoff_pose,
@@ -66,6 +67,10 @@ def color_to_str(color: BlockBinColor | int) -> str:
     }.get(color_value, f"UNKNOWN({color_value})")
 
 
+def state_to_str(state: Enum) -> str:
+    return f"{state.__class__.__name__}.{state.name}"
+
+
 class ControllerNode(Node):
     def __init__(self):
         super().__init__("controller_node")
@@ -83,13 +88,48 @@ class ControllerNode(Node):
             self.declare_parameter("min_goal_vector_length_m", 1e-3).value
         )
         self.explore_goal_timeout_sec = float(
-            self.declare_parameter("explore_goal_timeout_sec", 10.0).value
+            self.declare_parameter("explore_goal_timeout_sec", 30.0).value
+        )
+        self.cmd_vel_topic = str(
+            self.declare_parameter("cmd_vel_topic", "/cmd_vel").value
+        )
+        self.state_marker_topic = str(
+            self.declare_parameter("state_marker_topic", "/controller/state_marker").value
+        )
+        self.state_marker_frame = str(
+            self.declare_parameter(
+                "state_marker_frame",
+                self.robot_base_frame,
+            ).value
+        )
+        self.state_marker_z_offset_m = float(
+            self.declare_parameter("state_marker_z_offset_m", 0.8).value
+        )
+        self.state_marker_text_height_m = float(
+            self.declare_parameter("state_marker_text_height_m", 0.2).value
+        )
+        self.startup_observation_duration_sec = float(
+            self.declare_parameter("startup_observation_duration_sec", 5.0).value
+        )
+        self.startup_observation_angular_z = float(
+            self.declare_parameter("startup_observation_angular_z", 1.0).value
+        )
+        self.startup_required_bin_count = int(
+            self.declare_parameter("startup_required_bin_count", 3).value
         )
         self.tf_lookup_timeout = Duration(
             seconds=float(self.declare_parameter("tf_lookup_timeout_sec", 0.2).value)
         )
         self.tf_buffer = Buffer(node=self)
         self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.state_marker_pub = self.create_publisher(
+            Marker,
+            self.state_marker_topic,
+            10,
+        )
+        self.startup_observation_start_time = None
 
         block_topic = "/controller/block_poses"
         # Observation Management
@@ -140,6 +180,8 @@ class ControllerNode(Node):
             self.explore_action_topic,
         )
         self.explore_goal_in_flight = False
+        self.explore_goal_handle = None
+        self.explore_cancel_in_flight = False
         self.last_explore_wait_log_time = 0.0
 
         manip_action_topic = "/manipulate_block"
@@ -193,6 +235,24 @@ class ControllerNode(Node):
             case _:
                 self.get_logger().warn(f"Unexpected state {self.state=}")
 
+    def publish_state_marker(self):
+        marker = Marker()
+        marker.header.frame_id = self.state_marker_frame
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "controller_state"
+        marker.id = 0
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+        marker.pose.position.z = self.state_marker_z_offset_m
+        marker.pose.orientation.w = 1.0
+        marker.scale.z = self.state_marker_text_height_m
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 1.0
+        marker.color.a = 1.0
+        marker.text = state_to_str(self.state)
+        self.state_marker_pub.publish(marker)
+
     def log_status(self):
         def log_block_bin(block_or_bin: BlockPoseSmoothed | BinPoseSmoothed) -> str:
             p = block_or_bin.position.point
@@ -206,6 +266,7 @@ class ControllerNode(Node):
             f"Known blocks: [{blocks_str}]\n"
             f"Known bins: [{bins_str}]"
         )
+        self.publish_state_marker()
 
     def wait(self):
         "Waits until all expected topics and action servers are ready"
@@ -222,16 +283,36 @@ class ControllerNode(Node):
         self.state = Phase.StartUp.OBSERVE_BINS
 
     def observe_bins(self):
-        self.get_logger().info("I am observing O.O")
-        # Sends a movement command to Nav node - rotate 360 pls (can nav do that?)
-        # worst case it rotates 180 and just does it twice
-        # TODO(Alex): implement rotation action
-        # TODO(Alex): Remove the True check
-        if len(self.bins) >= 3 or True:
-            self.get_logger().info("BINS OBSERVED!")
-            self.state = Phase.Explore.EXPLORE
+        if self.startup_observation_start_time is None:
+            self.startup_observation_start_time = self.get_clock().now()
+            self.get_logger().info(
+                "Starting startup bin observation sweep for "
+                f"{self.startup_observation_duration_sec:.1f}s"
+            )
+
+        elapsed = (
+            self.get_clock().now() - self.startup_observation_start_time
+        ).nanoseconds / 1e9
+        if elapsed < self.startup_observation_duration_sec:
+            twist = Twist()
+            twist.angular.z = self.startup_observation_angular_z
+            self.cmd_vel_pub.publish(twist)
+            return
+
+        self.cmd_vel_pub.publish(Twist())
+        observed_bin_count = len(self.bins)
+        if observed_bin_count >= self.startup_required_bin_count:
+            self.get_logger().info(
+                f"Observed {observed_bin_count} bins during startup sweep."
+            )
         else:
-            self.get_logger().warning("DIDN'T SEE ALL BINS!")
+            self.get_logger().warning(
+                "Startup sweep completed with "
+                f"{observed_bin_count}/{self.startup_required_bin_count} "
+                "required bins observed; continuing to exploration."
+            )
+
+        self.state = Phase.Explore.EXPLORE
 
     def explore(self):
         if self.explore_goal_in_flight:
@@ -281,15 +362,47 @@ class ControllerNode(Node):
         goal_handle = future.result()
         if goal_handle is None or not goal_handle.accepted:
             self.explore_goal_in_flight = False
+            self.explore_goal_handle = None
+            self.explore_cancel_in_flight = False
             self.get_logger().error("Exploration goal was rejected.")
             return
 
+        self.explore_goal_handle = goal_handle
         self.get_logger().info("Exploration goal accepted.")
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self._explore_result_callback)
+        if self.target_block is not None:
+            self.cancel_exploration_goal()
+
+    def cancel_exploration_goal(self) -> bool:
+        if self.target_block is None:
+            return False
+
+        if self.explore_goal_handle is None:
+            return False
+
+        if self.explore_cancel_in_flight:
+            return False
+
+        self.explore_cancel_in_flight = True
+        self.get_logger().info("Canceling exploration after finding target block.")
+        cancel_future = self.explore_goal_handle.cancel_goal_async()
+        cancel_future.add_done_callback(self._explore_cancel_callback)
+        return True
+
+    def _explore_cancel_callback(self, future):
+        self.explore_cancel_in_flight = False
+        cancel_response = future.result()
+        goals_canceling = len(cancel_response.goals_canceling)
+        if goals_canceling > 0:
+            self.get_logger().info("Exploration cancel request accepted.")
+        else:
+            self.get_logger().warn("Exploration cancel request was not accepted.")
 
     def _explore_result_callback(self, future):
         self.explore_goal_in_flight = False
+        self.explore_goal_handle = None
+        self.explore_cancel_in_flight = False
         result = future.result().result
         status = "SUCCESS" if result.success else "FAILURE"
         self.get_logger().info(
@@ -315,7 +428,8 @@ class ControllerNode(Node):
                     f"Targeting {color_to_str(block.color)} block, ignoring collected blocks {self.collected=}"
                 )
                 self.target_block = block
-                # TODO: cancel exploration
+                if self.state == Phase.Explore.EXPLORE:
+                    self.cancel_exploration_goal()
 
     def bin_pose_callback(self, msg: BinPoseSmoothedArray):
         # don't pay attention if we're doing a grasp or deposition

@@ -36,6 +36,7 @@ class ExploreActionServer(Node):
     STATE_WAITING_FOR_TF = 'WAITING_FOR_TF'
     STATE_PLANNING = 'PLANNING'
     STATE_NAVIGATING = 'NAVIGATING'
+    STATE_ROTATING = 'ROTATING'
     STATE_NO_FRONTIER = 'NO_FRONTIER'
     STATE_CANCELING = 'CANCELING'
     STATE_FINISHED = 'FINISHED'
@@ -71,6 +72,8 @@ class ExploreActionServer(Node):
         self.declare_parameter('plan_period', 3.0)
         self.declare_parameter('no_frontier_finish_count', 5)
         self.declare_parameter('finish_when_no_frontiers', True)
+        self.declare_parameter('final_rotation_duration_sec', 5.0)
+        self.declare_parameter('final_rotation_angular_z', 1.0)
 
         self.declare_parameter('unknown_gain_radius_cells', 10)
         self.declare_parameter('unknown_gain_weight', 0.025)
@@ -102,6 +105,12 @@ class ExploreActionServer(Node):
         self.plan_period = float(self.get_parameter('plan_period').value)
         self.no_frontier_finish_count = int(self.get_parameter('no_frontier_finish_count').value)
         self.finish_when_no_frontiers = bool(self.get_parameter('finish_when_no_frontiers').value)
+        self.final_rotation_duration_sec = float(
+            self.get_parameter('final_rotation_duration_sec').value
+        )
+        self.final_rotation_angular_z = float(
+            self.get_parameter('final_rotation_angular_z').value
+        )
 
         self.unknown_gain_radius_cells = int(self.get_parameter('unknown_gain_radius_cells').value)
         self.unknown_gain_weight = float(self.get_parameter('unknown_gain_weight').value)
@@ -161,6 +170,9 @@ class ExploreActionServer(Node):
         self.exploring_active = False
         self.active_goal_handle = None
         self.goal_start_time = None
+        self.final_rotation_active = False
+        self.final_rotation_start_time = None
+        self.final_rotation_finish_message = ''
 
         self.current_state = self.STATE_IDLE
         self.finish_requested = False
@@ -308,12 +320,51 @@ class ExploreActionServer(Node):
     def stop_robot(self):
         self.cmd_pub.publish(Twist())
 
+    def publish_final_rotation_cmd(self):
+        twist = Twist()
+        twist.angular.z = self.final_rotation_angular_z
+        self.cmd_pub.publish(twist)
+
+    def start_final_rotation(self, finish_message: str):
+        with self.state_lock:
+            if self.final_rotation_active:
+                return
+
+            self.final_rotation_active = True
+            self.final_rotation_start_time = self.get_clock().now()
+            self.final_rotation_finish_message = finish_message
+            self.current_state = self.STATE_ROTATING
+
+        self.get_logger().info(
+            'Starting final camera sweep: '
+            f'duration={self.final_rotation_duration_sec:.1f}s, '
+            f'angular_z={self.final_rotation_angular_z:.2f}rad/s'
+        )
+        self.cancel_current_nav_goal()
+        self.publish_final_rotation_cmd()
+
+    def final_rotation_elapsed(self) -> float:
+        if self.final_rotation_start_time is None:
+            return 0.0
+        return (
+            self.get_clock().now() - self.final_rotation_start_time
+        ).nanoseconds / 1e9
+
+    def final_rotation_complete(self) -> bool:
+        if not self.final_rotation_active:
+            return False
+        return (
+            self.final_rotation_elapsed()
+            >= max(0.0, self.final_rotation_duration_sec)
+        )
+
     def deactivate_and_stop(self, final_state=None):
         if final_state is None:
             final_state = self.STATE_CANCELING
 
         with self.state_lock:
             self.exploring_active = False
+            self.final_rotation_active = False
             self.current_state = final_state
         self.cancel_current_nav_goal()
         self.stop_robot()
@@ -365,8 +416,23 @@ class ExploreActionServer(Node):
                     finish_requested = self.finish_requested
                     finish_success = self.finish_success
                     finish_message = self.finish_message
+                    final_rotation_active = self.final_rotation_active
+                    final_rotation_message = self.final_rotation_finish_message
 
                 if finish_requested:
+                    if finish_success and not final_rotation_active:
+                        self.start_final_rotation(finish_message)
+                        time.sleep(0.2)
+                        continue
+                    if (
+                        finish_success
+                        and final_rotation_active
+                        and not self.final_rotation_complete()
+                    ):
+                        self.publish_final_rotation_cmd()
+                        time.sleep(0.2)
+                        continue
+
                     final_state = (
                         self.STATE_FINISHED
                         if finish_success
@@ -377,13 +443,40 @@ class ExploreActionServer(Node):
                         goal_handle.succeed()
                     else:
                         goal_handle.abort()
-                    return self.make_result(finish_success, finish_message)
+                    return self.make_result(
+                        finish_success,
+                        final_rotation_message or finish_message,
+                    )
 
                 if (not run_until_cancelled) and max_runtime > 0.0 and elapsed >= max_runtime:
+                    if not final_rotation_active:
+                        self.get_logger().info('Explore goal reached final rotation window')
+                        self.start_final_rotation('Reached requested runtime')
+                        time.sleep(0.2)
+                        continue
+                    if not self.final_rotation_complete():
+                        self.publish_final_rotation_cmd()
+                        time.sleep(0.2)
+                        continue
+
                     self.get_logger().info('Explore goal finished by requested timeout')
                     self.deactivate_and_stop(self.STATE_FINISHED)
                     goal_handle.succeed()
-                    return self.make_result(True, 'Reached requested runtime')
+                    return self.make_result(
+                        True,
+                        final_rotation_message or 'Reached requested runtime',
+                    )
+
+                if (
+                    not run_until_cancelled
+                    and max_runtime > self.final_rotation_duration_sec
+                    and elapsed >= max_runtime - self.final_rotation_duration_sec
+                ):
+                    if not final_rotation_active:
+                        self.get_logger().info('Explore goal entered final rotation window')
+                        self.start_final_rotation('Reached requested runtime')
+                    else:
+                        self.publish_final_rotation_cmd()
 
                 time.sleep(0.2)
 
@@ -396,6 +489,9 @@ class ExploreActionServer(Node):
                 self.exploring_active = False
                 self.active_goal_handle = None
                 self.goal_start_time = None
+                self.final_rotation_active = False
+                self.final_rotation_start_time = None
+                self.final_rotation_finish_message = ''
                 if self.current_state != self.STATE_CANCELING:
                     self.current_state = self.STATE_IDLE
             self.stop_robot()
@@ -699,6 +795,13 @@ class ExploreActionServer(Node):
         goal_msg.pose.pose.orientation = yaw_to_quaternion(yaw)
 
         with self.state_lock:
+            if (
+                not self.exploring_active
+                or self.finish_requested
+                or self.final_rotation_active
+            ):
+                return
+
             self.nav_goal_in_progress = True
             self.current_goal_xy = (float(x), float(y))
             self.current_nav_goal_handle = None
@@ -729,7 +832,7 @@ class ExploreActionServer(Node):
                 self.current_nav_goal_handle = None
                 self.current_goal_xy = None
                 self.goals_failed += 1
-                if self.exploring_active:
+                if self.exploring_active and not self.final_rotation_active:
                     self.current_state = (
                         self.STATE_WAITING_FOR_NAV2
                         if reason is not None
@@ -752,7 +855,7 @@ class ExploreActionServer(Node):
                 self.current_nav_goal_handle = None
                 self.current_goal_xy = None
                 self.goals_failed += 1
-                if self.exploring_active:
+                if self.exploring_active and not self.final_rotation_active:
                     self.current_state = (
                         self.STATE_WAITING_FOR_NAV2
                         if reason is not None
@@ -766,6 +869,7 @@ class ExploreActionServer(Node):
             cancel_immediately = (
                 not self.exploring_active
                 or self.nav_cancel_requested
+                or self.final_rotation_active
             )
 
         if cancel_immediately:
@@ -789,6 +893,7 @@ class ExploreActionServer(Node):
             goal_xy = self.current_goal_xy
             cancel_requested = self.nav_cancel_requested
             still_exploring = self.exploring_active
+            final_rotation_active = self.final_rotation_active
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info('Frontier goal succeeded')
@@ -807,7 +912,7 @@ class ExploreActionServer(Node):
             self.current_nav_goal_handle = None
             self.current_goal_xy = None
             self.nav_cancel_requested = False
-            if self.exploring_active:
+            if self.exploring_active and not final_rotation_active:
                 self.current_state = self.STATE_PLANNING
 
     def cancel_nav_goal_handle(self, nav_goal_handle):
@@ -839,8 +944,9 @@ class ExploreActionServer(Node):
             active = self.exploring_active
             finish_requested = self.finish_requested
             nav_goal_in_progress = self.nav_goal_in_progress
+            final_rotation_active = self.final_rotation_active
 
-        if not active or finish_requested:
+        if not active or finish_requested or final_rotation_active:
             return
 
         self.cleanup_blacklist()

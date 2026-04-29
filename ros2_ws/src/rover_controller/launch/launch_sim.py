@@ -98,6 +98,16 @@ def generate_launch_description():
         default_value="true",
         description="Run rover_controller node",
     )
+    startup_observation_duration_arg = DeclareLaunchArgument(
+        "startup_observation_duration_sec",
+        default_value="6.5",
+        description="Startup camera sweep duration in simulated seconds.",
+    )
+    startup_observation_angular_z_arg = DeclareLaunchArgument(
+        "startup_observation_angular_z",
+        default_value="1.0",
+        description="Startup camera sweep angular velocity in rad/s.",
+    )
     run_nav_debug_overlay_arg = DeclareLaunchArgument(
         "run_nav_debug_overlay",
         default_value="true",
@@ -180,6 +190,18 @@ def generate_launch_description():
         package="rover_controller",
         executable="rover_controller",
         output="screen",
+        parameters=[
+            {
+                "use_sim_time": True,
+                "cmd_vel_topic": namespaced_topic("/cmd_vel"),
+                "startup_observation_duration_sec": LaunchConfiguration(
+                    "startup_observation_duration_sec"
+                ),
+                "startup_observation_angular_z": LaunchConfiguration(
+                    "startup_observation_angular_z"
+                ),
+            }
+        ],
         condition=IfCondition(LaunchConfiguration("run_rover_controller")),
     )
 
@@ -221,6 +243,8 @@ def generate_launch_description():
             run_manipulation_stub_arg,
             run_smooth_observations_arg,
             run_rover_controller_arg,
+            startup_observation_duration_arg,
+            startup_observation_angular_z_arg,
             run_nav_debug_overlay_arg,
             run_arm_joint_state_fallback_arg,
             run_slam_node_arg,
