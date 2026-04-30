@@ -10,6 +10,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    pkg_bringup = get_package_share_directory("rover_gz_bringup")
     pkg_perception = get_package_share_directory("rsdp_perception")
     pkg_slam = get_package_share_directory("rover_slam")
 
@@ -47,6 +48,13 @@ def generate_launch_description():
         "startup_observation_angular_z",
         default_value="1.0",
         description="Startup camera sweep angular velocity in rad/s.",
+    )
+
+    robot_description_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_bringup, "launch", "publish_description.py")
+        ),
+        launch_arguments={"robot_ns": ""}.items(),
     )
 
     vision_launch = IncludeLaunchDescription(
@@ -102,6 +110,7 @@ def generate_launch_description():
             run_arm_joint_state_fallback_arg,
             startup_observation_duration_arg,
             startup_observation_angular_z_arg,
+            robot_description_launch,
             vision_launch,
             slam_launch,
             smooth_observations,
