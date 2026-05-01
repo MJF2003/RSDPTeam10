@@ -71,13 +71,13 @@ DONE: ~Controller needs to update the costmap with block/bin positions~
 
 
 # NEXT STEPS
-- IDEA - if the smoothing node finds a new node far from an old one with the same colour as another one, overwrite it - may be able handle the SLAM drifts
-
-TODO: If the controller sees a bin observation on top of a block observation, then it should probably assume that that is a bin and overwrite the block observation?
-TODO: Controller code - if the vision recognitions are moving then it can run into the propose_nav_pose - I think that's just because it doesn't know the bin though.
-
-- think we just have to assume this stuff is sim2real and live with it
-
+TODO: Set up wireless ssh from laptop
+TODO: Check where the lidar transform is actually coming from 
+TODO: E-Stop from rover_controller 
+TODO: rover_controller wait for input 
+TODO: Reduce angular velocity of rotation moves (hardcode - half angular velocity for 2x the time)
+TODO: Fix build errors for manipulation node 
 TODO: Chunyi code:
   - Convert to action server 
   - Test with smoothed nodes
+TODO: Throttle realsense/YOLO option? Needs to be a fast tweak
