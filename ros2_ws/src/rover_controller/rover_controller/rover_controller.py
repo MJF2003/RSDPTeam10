@@ -8,6 +8,7 @@ from rclpy.node import Node
 from rclpy.time import Time
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Header
+from std_srvs.srv import Trigger
 from tf2_geometry_msgs import do_transform_point
 from tf2_ros import Buffer, TransformException, TransformListener
 from visualization_msgs.msg import Marker
@@ -59,6 +60,9 @@ class Phase:
 
     class PostDeposit(Enum):
         TERMINATE = auto()
+
+    class Stopped(Enum):
+        STOPPED = auto()
 
 
 def color_to_str(color: BlockBinColor | int) -> str:
@@ -163,6 +167,19 @@ class ControllerNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.mission_start_requested = False
+        self.mission_stopped = False
+        self.last_startup_readiness_log_time = 0.0
+        self.start_mission_srv = self.create_service(
+            Trigger,
+            "/controller/start_mission",
+            self.start_mission_callback,
+        )
+        self.stop_mission_srv = self.create_service(
+            Trigger,
+            "/controller/stop_mission",
+            self.stop_mission_callback,
+        )
         self.state_marker_pub = self.create_publisher(
             Marker,
             self.state_marker_topic,
@@ -212,6 +229,8 @@ class ControllerNode(Node):
             action_topic,
         )
         self.nav_goal_in_flight = False
+        self.nav_goal_handle = None
+        self.nav_cancel_in_flight = False
 
         self.explore_action_topic = str(
             self.declare_parameter("explore_action_name", "/explore").value
@@ -240,9 +259,11 @@ class ControllerNode(Node):
         )
         self.manip_goal_in_flight = False
         self.manip_goal_operation: int | None = None
+        self.manip_goal_handle = None
+        self.manip_cancel_in_flight = False
         self.required_startup_action_clients = (
-            self.nav_action_client,
-            self.manip_action_client,
+            (action_topic, self.nav_action_client),
+            (manip_action_topic, self.manip_action_client),
         )
 
         # Spin main controller loop
@@ -286,10 +307,56 @@ class ControllerNode(Node):
                 self.deposit_block()
             case Phase.PostDeposit.TERMINATE:
                 pass
+            case Phase.Stopped.STOPPED:
+                self.cmd_vel_pub.publish(Twist())
             case _:
                 self.get_logger().warn(f"Unexpected state {self.state=}")
 
         self.publish_state_marker()
+
+    def start_mission_callback(self, _request, response):
+        if self.mission_stopped:
+            response.success = False
+            response.message = (
+                "Mission is stopped; relaunch the controller to start again."
+            )
+            return response
+
+        if self.mission_start_requested:
+            response.success = True
+            response.message = "Mission start was already requested."
+            return response
+
+        self.mission_start_requested = True
+        response.success = True
+        response.message = (
+            "Mission start requested; controller will start when interfaces are ready."
+        )
+        self.get_logger().info(response.message)
+        return response
+
+    def stop_mission_callback(self, _request, response):
+        if self.mission_stopped:
+            self.cmd_vel_pub.publish(Twist())
+            response.success = True
+            response.message = "Mission is already stopped."
+            return response
+
+        self.stop_mission()
+        response.success = True
+        response.message = "Mission stop requested."
+        return response
+
+    def stop_mission(self):
+        self.get_logger().warning("Stopping mission: canceling active goals.")
+        self.mission_stopped = True
+        self.mission_start_requested = False
+        self.state = Phase.Stopped.STOPPED
+
+        self.cancel_exploration_goal(reason="mission stop", require_target=False)
+        self.cancel_navigation_goal()
+        self.cancel_manipulation_goal()
+        self.cmd_vel_pub.publish(Twist())
 
     def publish_state_marker(self):
         marker = Marker()
@@ -325,17 +392,55 @@ class ControllerNode(Node):
 
     def wait(self):
         "Waits until all expected topics and action servers are ready"
-        for sub in self.subscriptions:
-            if self.count_publishers(sub.topic_name) == 0:
-                self.get_logger().info(f"Waiting for publisher on {sub.topic_name}...")
-                return
+        readiness = self.get_startup_readiness()
+        self.log_startup_readiness(readiness)
+        if not all(ready for _, ready in readiness):
+            return
 
-        for action_client in self.required_startup_action_clients:
-            if not action_client.server_is_ready():
-                return
+        if not self.mission_start_requested:
+            return
 
-        self.get_logger().info("All interfaces ready, progressing to bin observation.")
+        self.get_logger().info(
+            "All interfaces ready and mission start requested; "
+            "progressing to bin observation."
+        )
         self.state = Phase.StartUp.OBSERVE_BINS
+
+    def get_startup_readiness(self) -> list[tuple[str, bool]]:
+        readiness = [
+            (
+                f"publisher:{sub.topic_name}",
+                self.count_publishers(sub.topic_name) > 0,
+            )
+            for sub in self.subscriptions
+        ]
+        readiness.extend(
+            (f"action:{name}", client.server_is_ready())
+            for name, client in self.required_startup_action_clients
+        )
+        return readiness
+
+    def log_startup_readiness(self, readiness: list[tuple[str, bool]]):
+        now_sec = self.get_clock().now().nanoseconds / 1e9
+        if now_sec - self.last_startup_readiness_log_time < 1.0:
+            return
+
+        self.last_startup_readiness_log_time = now_sec
+        ready_count = sum(1 for _, ready in readiness if ready)
+        total_count = len(readiness)
+        start_status = (
+            "start requested"
+            if self.mission_start_requested
+            else "waiting for /controller/start_mission"
+        )
+        missing = ", ".join(name for name, ready in readiness if not ready)
+        message = (
+            f"Startup readiness: {ready_count}/{total_count} interfaces ready; "
+            f"{start_status}."
+        )
+        if missing:
+            message = f"{message} Waiting for: {missing}"
+        self.get_logger().info(message)
 
     def observe_bins(self):
         if self.startup_observation_start_time is None:
@@ -381,7 +486,7 @@ class ControllerNode(Node):
 
     # ------------------------ EXPLORATION ----------------------------------------
     def send_exploration_goal(self) -> bool:
-        if self.explore_goal_in_flight:
+        if self.mission_stopped or self.explore_goal_in_flight:
             return False
 
         if not self.explore_action_client.wait_for_server(timeout_sec=0.5):
@@ -426,11 +531,18 @@ class ControllerNode(Node):
         self.get_logger().info("Exploration goal accepted.")
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self._explore_result_callback)
+        if self.mission_stopped:
+            self.cancel_exploration_goal(reason="mission stop", require_target=False)
+            return
         if self.target_block is not None:
             self.cancel_exploration_goal()
 
-    def cancel_exploration_goal(self) -> bool:
-        if self.target_block is None:
+    def cancel_exploration_goal(
+        self,
+        reason: str = "finding target block",
+        require_target: bool = True,
+    ) -> bool:
+        if require_target and self.target_block is None:
             return False
 
         if self.explore_goal_handle is None:
@@ -440,7 +552,7 @@ class ControllerNode(Node):
             return False
 
         self.explore_cancel_in_flight = True
-        self.get_logger().info("Canceling exploration after finding target block.")
+        self.get_logger().info(f"Canceling exploration after {reason}.")
         cancel_future = self.explore_goal_handle.cancel_goal_async()
         cancel_future.add_done_callback(self._explore_cancel_callback)
         return True
@@ -467,10 +579,16 @@ class ControllerNode(Node):
             f"goals_failed={result.goals_failed}, message='{result.message}'"
         )
 
+        if self.mission_stopped:
+            return
+
         if self.target_block is not None:
             self.state = Phase.ApproachBlock.EXECUTE_NAV
 
     def block_pose_callback(self, msg: BlockPoseSmoothedArray):
+        if self.mission_stopped:
+            return
+
         # don't pay attention if we're doing a grasp or deposition
         if (self.state in Phase.GraspBlock) or (self.state in Phase.DepositBlock):
             return
@@ -487,6 +605,9 @@ class ControllerNode(Node):
                     self.cancel_exploration_goal()
 
     def bin_pose_callback(self, msg: BinPoseSmoothedArray):
+        if self.mission_stopped:
+            return
+
         # don't pay attention if we're doing a grasp or deposition
         if (self.state in Phase.GraspBlock) or (self.state in Phase.DepositBlock):
             return
@@ -598,7 +719,7 @@ class ControllerNode(Node):
         """Send a navigation action goal for a specific block target."""
         # select a block to go to
 
-        if self.nav_goal_in_flight or (target is None):
+        if self.mission_stopped or self.nav_goal_in_flight or (target is None):
             # this check for block is None is purely for typing. It can't be None
             # when this function is called (I think)
             return False
@@ -692,16 +813,54 @@ class ControllerNode(Node):
         goal_handle = future.result()
         if goal_handle is None or not goal_handle.accepted:
             self.nav_goal_in_flight = False
+            self.nav_goal_handle = None
+            self.nav_cancel_in_flight = False
             self.get_logger().error("Navigation goal was rejected.")
             return
 
+        self.nav_goal_handle = goal_handle
         self.get_logger().info("Navigation goal accepted.")
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self._nav_result_callback)
+        if self.mission_stopped:
+            self.cancel_navigation_goal()
+
+    def cancel_navigation_goal(self) -> bool:
+        if self.nav_goal_handle is None:
+            return False
+
+        if self.nav_cancel_in_flight:
+            return False
+
+        self.nav_cancel_in_flight = True
+        self.get_logger().info("Canceling navigation goal.")
+        cancel_future = self.nav_goal_handle.cancel_goal_async()
+        cancel_future.add_done_callback(self._nav_cancel_callback)
+        return True
+
+    def _nav_cancel_callback(self, future):
+        self.nav_cancel_in_flight = False
+        cancel_response = future.result()
+        goals_canceling = len(cancel_response.goals_canceling)
+        if goals_canceling > 0:
+            self.get_logger().info("Navigation cancel request accepted.")
+        else:
+            self.get_logger().warn("Navigation cancel request was not accepted.")
 
     def _nav_result_callback(self, future):
         self.nav_goal_in_flight = False
+        self.nav_goal_handle = None
+        self.nav_cancel_in_flight = False
         result = future.result().result
+        if self.mission_stopped:
+            status = "SUCCESS" if result.success else "FAILURE"
+            self.get_logger().info(
+                f"Navigation result after stop {status}: "
+                f"final_distance={result.final_distance:.3f} m, "
+                f"message='{result.message}'"
+            )
+            return
+
         if result.success:
             status = "SUCCESS"
             if self.state in Phase.ApproachBlock:
@@ -783,7 +942,7 @@ class ControllerNode(Node):
         target: BlockPoseSmoothed | BinPoseSmoothed | None,
         description: str,
     ) -> bool:
-        if self.manip_goal_in_flight or (target is None):
+        if self.mission_stopped or self.manip_goal_in_flight or (target is None):
             return False
 
         if not self.manip_action_client.wait_for_server(timeout_sec=0.5):
@@ -821,9 +980,34 @@ class ControllerNode(Node):
             self._handle_manipulation_result(success=False, message="Goal rejected.")
             return
 
+        self.manip_goal_handle = goal_handle
         self.get_logger().info("Manipulation goal accepted.")
         result_future = goal_handle.get_result_async()
         result_future.add_done_callback(self._manip_result_callback)
+        if self.mission_stopped:
+            self.cancel_manipulation_goal()
+
+    def cancel_manipulation_goal(self) -> bool:
+        if self.manip_goal_handle is None:
+            return False
+
+        if self.manip_cancel_in_flight:
+            return False
+
+        self.manip_cancel_in_flight = True
+        self.get_logger().info("Canceling manipulation goal.")
+        cancel_future = self.manip_goal_handle.cancel_goal_async()
+        cancel_future.add_done_callback(self._manip_cancel_callback)
+        return True
+
+    def _manip_cancel_callback(self, future):
+        self.manip_cancel_in_flight = False
+        cancel_response = future.result()
+        goals_canceling = len(cancel_response.goals_canceling)
+        if goals_canceling > 0:
+            self.get_logger().info("Manipulation cancel request accepted.")
+        else:
+            self.get_logger().warn("Manipulation cancel request was not accepted.")
 
     def _manip_result_callback(self, future):
         result = future.result().result
@@ -837,6 +1021,11 @@ class ControllerNode(Node):
         operation = self.manip_goal_operation
         self.manip_goal_in_flight = False
         self.manip_goal_operation = None
+        self.manip_goal_handle = None
+        self.manip_cancel_in_flight = False
+
+        if self.mission_stopped:
+            return
 
         if operation == ManipulateBlock.Goal.GRASP:
             if success:

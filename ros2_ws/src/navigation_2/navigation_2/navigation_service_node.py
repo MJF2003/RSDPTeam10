@@ -2,7 +2,7 @@
 
 import time
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from lifecycle_msgs.srv import GetState
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from nav_msgs.msg import OccupancyGrid
@@ -35,6 +35,9 @@ class NavigationServiceNode(Node):
         self.robot_base_frame = str(
             self._declare_or_get_parameter('robot_base_frame', 'base_link')
         )
+        self.cmd_vel_topic = str(
+            self._declare_or_get_parameter('cmd_vel_topic', '/cmd_vel')
+        )
         self.tf_lookup_timeout = Duration(
             seconds=float(
                 self._declare_or_get_parameter('tf_lookup_timeout_sec', 0.2)
@@ -49,6 +52,7 @@ class NavigationServiceNode(Node):
 
         self.tf_buffer = Buffer(node=self)
         self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
 
         self._map_received = False
         self._bt_navigator_state = 'unknown'
@@ -229,9 +233,12 @@ class NavigationServiceNode(Node):
 
         self._nav2_not_ready_reason = reason or ''
 
-    def _wait_for_nav2_backend(self, timeout_sec):
+    def _wait_for_nav2_backend(self, timeout_sec, goal_handle=None):
         deadline = time.monotonic() + timeout_sec
         while rclpy.ok() and time.monotonic() < deadline:
+            if goal_handle is not None and goal_handle.is_cancel_requested:
+                return False
+
             self._refresh_nav2_readiness()
             if self._nav2_ready:
                 return True
@@ -257,6 +264,9 @@ class NavigationServiceNode(Node):
             and orientation.z == 0.0
             and orientation.w == 0.0
         )
+
+    def _publish_stop(self):
+        self.cmd_vel_pub.publish(Twist())
 
     def goal_callback(self, _goal_request):
         """Accept goals and gate execution inside execute_callback."""
@@ -293,10 +303,19 @@ class NavigationServiceNode(Node):
         )
 
         try:
-            if not self._wait_for_nav2_backend(self.nav2_server_wait_timeout_sec):
+            if not self._wait_for_nav2_backend(
+                self.nav2_server_wait_timeout_sec,
+                goal_handle,
+            ):
                 result = NavigateToPos.Result()
                 result.success = False
                 result.final_distance = float('inf')
+                if goal_handle.is_cancel_requested:
+                    result.message = 'Goal canceled before Nav2 became ready.'
+                    self._publish_stop()
+                    goal_handle.canceled()
+                    return result
+
                 result.message = (
                     'Nav2 backend did not become ready before timeout. '
                     f'Last issue: {self._nav2_not_ready_reason}'
@@ -322,10 +341,29 @@ class NavigationServiceNode(Node):
                 result.success = False
                 result.final_distance = float('inf')
                 result.message = 'Nav2 rejected the requested goal.'
+                self._publish_stop()
                 goal_handle.abort()
                 return result
 
             while not self.navigator.isTaskComplete():
+                if goal_handle.is_cancel_requested:
+                    self.get_logger().info('Navigation goal canceled by client.')
+                    self.navigator.cancelTask()
+                    self._publish_stop()
+
+                    result = NavigateToPos.Result()
+                    result.success = False
+                    result.message = 'Goal canceled.'
+                    final_feedback = self.navigator.getFeedback()
+                    if final_feedback:
+                        result.final_distance = float(
+                            final_feedback.distance_remaining
+                        )
+                    else:
+                        result.final_distance = float('inf')
+                    goal_handle.canceled()
+                    return result
+
                 feedback = NavigateToPos.Feedback()
                 nav_feedback = self.navigator.getFeedback()
                 if nav_feedback:
@@ -350,11 +388,13 @@ class NavigationServiceNode(Node):
             else:
                 result.success = False
                 result.message = f'Nav failed with status: {nav_result}'
+                self._publish_stop()
                 goal_handle.abort()
             return result
 
         except Exception as exc:
             self.get_logger().error(f'Exception during navigation: {exc}')
+            self._publish_stop()
             goal_handle.abort()
             return NavigateToPos.Result(success=False, message=str(exc))
 
