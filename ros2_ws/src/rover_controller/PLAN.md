@@ -71,7 +71,7 @@ DONE: ~Controller needs to update the costmap with block/bin positions~
 
 
 # NEXT STEPS
-TODO: Set up wireless ssh from laptop
+DONE: ~Set up wireless ssh from laptop~
 TODO: Check where the lidar transform is actually coming from 
 TODO: E-Stop from rover_controller 
 TODO: rover_controller wait for input 
