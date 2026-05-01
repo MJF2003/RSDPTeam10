@@ -72,12 +72,12 @@ DONE: ~Controller needs to update the costmap with block/bin positions~
 
 # NEXT STEPS
 DONE: ~Set up wireless ssh from laptop~
-TODO: Check where the lidar transform is actually coming from 
+DONE: ~Check where the lidar transform is actually coming from~ - it's hardcoded. I updated to the latest values.
 TODO: E-Stop from rover_controller 
-TODO: rover_controller wait for input 
+TODO: rover_controller wait for input (as well as waiting, it should print whether all the expected servers are healthy) 
 TODO: Reduce angular velocity of rotation moves (hardcode - half angular velocity for 2x the time)
 TODO: Fix build errors for manipulation node 
 TODO: Chunyi code:
   - Convert to action server 
   - Test with smoothed nodes
-TODO: Throttle realsense/YOLO option? Needs to be a fast tweak
+TODO: Throttle realsense/YOLO option? Needs to be a fast tweak we can make in the launch or something
