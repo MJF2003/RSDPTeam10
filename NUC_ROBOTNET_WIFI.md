@@ -18,6 +18,7 @@ nmcli connection down RobotNet
 
 
 # For the Pi - need to set up a connection through to wireless:
+May also need to edit the Pi's  to export the required ROS_DISCOVERY_SERVER!!
 
 ```bash 
 nmcli connection show
@@ -45,6 +46,8 @@ Check the routes with `ip addr` and `ip route` and `ip link`
 
 # Discovery servers
 To enable the ROS nets to talk to each other, we need to set up a discovery server that will thread ROS messages through the NUC. That looks like each machine exporting the following vars. It is crucial that the ROS_DISCOVERY_SERVER is the ip address of the NUC over the relevant connection (ie. `10.0.0.20`` over ethernet (Pi), or `10.42.0.1` over RobotNet (Laptop) or either on the NUC (localhost `127.0.0.0` should also work)).
+
+On the Pi, instead of exporting these or adding to bashrc they need to launch on startup - modify `/etc/ros/setup.bash` instead.
 
 ```bash
 export ROS_DOMAIN_ID=0
