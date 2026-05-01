@@ -40,7 +40,7 @@ def generate_launch_description():
         executable="static_transform_publisher",
         name="base_to_laser_tf",
         output="screen",
-        arguments=["0.09", "0.0", "0.23", "0", "0", "0", "base_link", "laser"],
+        arguments=["0.0700", "0", "0.0380", "0", "0", "0", "base_link", "laser"],
         parameters=[{"use_sim_time": use_sim_time}],
     )
 
