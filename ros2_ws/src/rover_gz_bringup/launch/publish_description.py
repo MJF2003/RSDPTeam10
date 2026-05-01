@@ -39,7 +39,7 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
             "urdf",
             "team_10_rover.urdf.xacro",
         ),
-        mappings={"use_gazebo": "false", "robot_ns": robot_ns},
+        mappings={"use_gazebo": "false", "robot_ns": robot_ns, "use_arm": "false"},
     )
 
     if robot_ns == "":
@@ -61,7 +61,6 @@ def spawn_robot(context: LaunchContext, namespace: LaunchConfiguration):
             {"robot_description": robot_desc},
         ],
     )
-
 
     return [
         robot_state_publisher,
