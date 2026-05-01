@@ -28,6 +28,7 @@ setup(
     entry_points={
         "console_scripts": [
             "rover_controller = rover_controller.rover_controller:main",
+            "mission_console = rover_controller.mission_console:main",
             "smooth_observations = rover_controller.handle_observations:main",
             "sim_arm_joint_state_publisher = rover_controller.sim_arm_joint_state_publisher:main",
         ],
