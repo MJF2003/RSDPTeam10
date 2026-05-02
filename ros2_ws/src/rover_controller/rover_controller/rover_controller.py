@@ -99,7 +99,7 @@ class ControllerNode(Node):
             self.declare_parameter("min_goal_vector_length_m", 1e-3).value
         )
         self.explore_goal_timeout_sec = float(
-            self.declare_parameter("explore_goal_timeout_sec", 30.0).value
+            self.declare_parameter("explore_goal_timeout_sec", 15.0).value
         )
         self.cmd_vel_topic = str(
             self.declare_parameter("cmd_vel_topic", "/cmd_vel").value
