@@ -99,7 +99,7 @@ class ControllerNode(Node):
             self.declare_parameter("min_goal_vector_length_m", 1e-3).value
         )
         self.explore_goal_timeout_sec = float(
-            self.declare_parameter("explore_goal_timeout_sec", 15.0).value
+            self.declare_parameter("explore_goal_timeout_sec", 20.0).value
         )
         self.cmd_vel_topic = str(
             self.declare_parameter("cmd_vel_topic", "/cmd_vel").value
@@ -122,10 +122,10 @@ class ControllerNode(Node):
             self.declare_parameter("state_marker_text_height_m", 0.2).value
         )
         self.startup_observation_duration_sec = float(
-            self.declare_parameter("startup_observation_duration_sec", 5.0).value
+            self.declare_parameter("startup_observation_duration_sec", 10.0).value
         )
         self.startup_observation_angular_z = float(
-            self.declare_parameter("startup_observation_angular_z", 1.0).value
+            self.declare_parameter("startup_observation_angular_z", 0.5).value
         )
         self.startup_required_bin_count = int(
             self.declare_parameter("startup_required_bin_count", 3).value

@@ -106,7 +106,7 @@ def generate_launch_description():
     )
     startup_observation_angular_z_arg = DeclareLaunchArgument(
         "startup_observation_angular_z",
-        default_value="1.0",
+        default_value="0.5",
         description="Startup camera sweep angular velocity in rad/s.",
     )
     run_nav_debug_overlay_arg = DeclareLaunchArgument(
