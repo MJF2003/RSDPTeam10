@@ -146,7 +146,12 @@ def generate_launch_description():
                         "use_sim_time": use_sim_time,
                         "plan_period": 0.5,
                         "min_goal_distance": 0.5,
-                        "goal_backoff_cells": 2,
+                        "goal_backoff_cells": 12,
+                        "max_goal_backoff_cells": 24,
+                        "min_goal_clearance_m": 0.45,
+                        "frontier_direction_radius_cells": 3,
+                        "frontier_min_unknown_depth_m": 0.30,
+                        "frontier_corridor_half_width_m": 0.15,
                     }
                 ],
                 condition=IfCondition(run_explore_server),

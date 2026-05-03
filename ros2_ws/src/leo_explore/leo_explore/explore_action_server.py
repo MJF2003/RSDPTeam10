@@ -64,7 +64,12 @@ class ExploreActionServer(Node):
 
         self.declare_parameter('min_frontier_size', 20)
         self.declare_parameter('min_goal_distance', 1.0)
-        self.declare_parameter('goal_backoff_cells', 8)
+        self.declare_parameter('goal_backoff_cells', 12)
+        self.declare_parameter('max_goal_backoff_cells', 24)
+        self.declare_parameter('min_goal_clearance_m', 0.45)
+        self.declare_parameter('frontier_direction_radius_cells', 3)
+        self.declare_parameter('frontier_min_unknown_depth_m', 0.30)
+        self.declare_parameter('frontier_corridor_half_width_m', 0.15)
 
         self.declare_parameter('blacklist_radius', 0.60)
         self.declare_parameter('blacklist_time', 30.0)
@@ -98,6 +103,27 @@ class ExploreActionServer(Node):
         self.min_frontier_size = int(self.get_parameter('min_frontier_size').value)
         self.min_goal_distance = float(self.get_parameter('min_goal_distance').value)
         self.goal_backoff_cells = int(self.get_parameter('goal_backoff_cells').value)
+        self.max_goal_backoff_cells = int(
+            self.get_parameter('max_goal_backoff_cells').value
+        )
+        self.min_goal_clearance_m = float(
+            self.get_parameter('min_goal_clearance_m').value
+        )
+        self.frontier_direction_radius_cells = int(
+            self.get_parameter('frontier_direction_radius_cells').value
+        )
+        self.frontier_min_unknown_depth_m = float(
+            self.get_parameter('frontier_min_unknown_depth_m').value
+        )
+        self.frontier_corridor_half_width_m = float(
+            self.get_parameter('frontier_corridor_half_width_m').value
+        )
+        if self.max_goal_backoff_cells < self.goal_backoff_cells:
+            self.get_logger().warn(
+                'max_goal_backoff_cells is less than goal_backoff_cells; '
+                'clamping it up to the requested goal_backoff_cells value.'
+            )
+            self.max_goal_backoff_cells = self.goal_backoff_cells
 
         self.blacklist_radius = float(self.get_parameter('blacklist_radius').value)
         self.blacklist_time = float(self.get_parameter('blacklist_time').value)
@@ -167,6 +193,7 @@ class ExploreActionServer(Node):
         # Runtime state
         # ------------------------------------------------------------
         self.map_msg = None
+        self._clearance_offsets_cache = {}
         self.exploring_active = False
         self.active_goal_handle = None
         self.goal_start_time = None
@@ -180,6 +207,7 @@ class ExploreActionServer(Node):
         self.finish_message = ''
 
         self.nav_goal_in_progress = False
+        self.frontier_plan_in_progress = False
         self.current_nav_goal_handle = None
         self.current_goal_xy = None
         self.nav_cancel_requested = False
@@ -247,6 +275,7 @@ class ExploreActionServer(Node):
         self.finish_message = ''
 
         self.nav_goal_in_progress = False
+        self.frontier_plan_in_progress = False
         self.current_nav_goal_handle = None
         self.current_goal_xy = None
         self.nav_cancel_requested = False
@@ -524,6 +553,241 @@ class ExploreActionServer(Node):
     def is_free(self, v) -> bool:
         return 0 <= v <= self.free_threshold
 
+    def is_occupied(self, v) -> bool:
+        return v >= self.occupied_threshold
+
+    def is_free_grid(self, grid):
+        return (grid >= 0) & (grid <= self.free_threshold)
+
+    def metres_to_cells(self, metres: float, info) -> int:
+        if info.resolution <= 0.0:
+            return 0
+        return max(0, int(math.ceil(metres / info.resolution)))
+
+    def goal_clearance_cells(self, info) -> int:
+        return self.metres_to_cells(self.min_goal_clearance_m, info)
+
+    def get_clearance_offsets(self, radius_cells: int):
+        radius_cells = max(0, int(radius_cells))
+        cached = self._clearance_offsets_cache.get(radius_cells)
+        if cached is not None:
+            return cached
+
+        radius_sq = radius_cells * radius_cells
+        offsets = []
+        for dy in range(-radius_cells, radius_cells + 1):
+            for dx in range(-radius_cells, radius_cells + 1):
+                if dx * dx + dy * dy <= radius_sq:
+                    offsets.append((dx, dy))
+
+        self._clearance_offsets_cache[radius_cells] = offsets
+        return offsets
+
+    def build_safe_goal_mask(self, grid, clearance_cells: int):
+        free = self.is_free_grid(grid)
+        if clearance_cells <= 0:
+            return free.copy()
+
+        h, w = grid.shape
+        safe = np.ones_like(free, dtype=bool)
+
+        for dx, dy in self.get_clearance_offsets(clearance_cells):
+            shifted_free = np.zeros_like(free, dtype=bool)
+
+            src_x0 = max(0, -dx)
+            src_x1 = w - max(0, dx)
+            dst_x0 = max(0, dx)
+            dst_x1 = w - max(0, -dx)
+
+            src_y0 = max(0, -dy)
+            src_y1 = h - max(0, dy)
+            dst_y0 = max(0, dy)
+            dst_y1 = h - max(0, -dy)
+
+            if src_x0 < src_x1 and src_y0 < src_y1:
+                shifted_free[dst_y0:dst_y1, dst_x0:dst_x1] = free[
+                    src_y0:src_y1,
+                    src_x0:src_x1,
+                ]
+
+            safe &= shifted_free
+
+        return safe
+
+    def find_nearest_safe_cell(self, safe_mask, start_gx, start_gy, max_radius_cells):
+        h, w = safe_mask.shape
+        if 0 <= start_gx < w and 0 <= start_gy < h and safe_mask[start_gy, start_gx]:
+            return start_gx, start_gy
+
+        max_radius_cells = max(0, int(max_radius_cells))
+        best = None
+        best_dist_sq = None
+
+        for radius in range(1, max_radius_cells + 1):
+            x0 = max(0, start_gx - radius)
+            x1 = min(w - 1, start_gx + radius)
+            y0 = max(0, start_gy - radius)
+            y1 = min(h - 1, start_gy + radius)
+
+            for gy in range(y0, y1 + 1):
+                for gx in range(x0, x1 + 1):
+                    if gx not in (x0, x1) and gy not in (y0, y1):
+                        continue
+                    if not safe_mask[gy, gx]:
+                        continue
+
+                    dist_sq = (gx - start_gx) ** 2 + (gy - start_gy) ** 2
+                    if best is None or dist_sq < best_dist_sq:
+                        best = (gx, gy)
+                        best_dist_sq = dist_sq
+
+            if best is not None:
+                return best
+
+        return None
+
+    def compute_reachable_distances(self, safe_mask, start_gx, start_gy):
+        h, w = safe_mask.shape
+        distances = np.full((h, w), -1, dtype=np.int32)
+
+        if not (0 <= start_gx < w and 0 <= start_gy < h):
+            return distances
+        if not safe_mask[start_gy, start_gx]:
+            return distances
+
+        q = deque([(start_gx, start_gy)])
+        distances[start_gy, start_gx] = 0
+
+        while q:
+            cx, cy = q.popleft()
+            next_distance = distances[cy, cx] + 1
+
+            for nx, ny in (
+                (cx + 1, cy),
+                (cx - 1, cy),
+                (cx, cy + 1),
+                (cx, cy - 1),
+            ):
+                if not (0 <= nx < w and 0 <= ny < h):
+                    continue
+                if distances[ny, nx] >= 0:
+                    continue
+                if not safe_mask[ny, nx]:
+                    continue
+
+                distances[ny, nx] = next_distance
+                q.append((nx, ny))
+
+        return distances
+
+    def has_free_line(self, grid, start_gx, start_gy, end_gx, end_gy):
+        h, w = grid.shape
+        dx = abs(end_gx - start_gx)
+        dy = -abs(end_gy - start_gy)
+        sx = 1 if start_gx < end_gx else -1
+        sy = 1 if start_gy < end_gy else -1
+        err = dx + dy
+        gx = start_gx
+        gy = start_gy
+
+        while True:
+            if not (0 <= gx < w and 0 <= gy < h):
+                return False
+            if not self.is_free(grid[gy, gx]):
+                return False
+            if gx == end_gx and gy == end_gy:
+                return True
+
+            e2 = 2 * err
+            if e2 >= dy:
+                err += dy
+                gx += sx
+            if e2 <= dx:
+                err += dx
+                gy += sy
+
+    def estimate_frontier_normal(self, grid, frontier_gx, frontier_gy):
+        h, w = grid.shape
+        r = max(1, self.frontier_direction_radius_cells)
+        sum_x = 0.0
+        sum_y = 0.0
+        unknown_count = 0
+
+        for ny in range(max(0, frontier_gy - r), min(h, frontier_gy + r + 1)):
+            for nx in range(max(0, frontier_gx - r), min(w, frontier_gx + r + 1)):
+                if grid[ny, nx] != -1:
+                    continue
+
+                dx = nx - frontier_gx
+                dy = ny - frontier_gy
+                dist = math.hypot(dx, dy)
+                if dist < 1e-6 or dist > r:
+                    continue
+
+                sum_x += dx / dist
+                sum_y += dy / dist
+                unknown_count += 1
+
+        if unknown_count == 0:
+            return None
+
+        norm = math.hypot(sum_x, sum_y)
+        alignment = norm / unknown_count
+        if norm < 1e-6 or alignment < 0.45:
+            return None
+
+        return sum_x / norm, sum_y / norm, unknown_count, alignment
+
+    def frontier_unknown_is_open(self, grid, frontier_gx, frontier_gy, ux, uy, info):
+        h, w = grid.shape
+        depth_cells = max(
+            1,
+            self.metres_to_cells(self.frontier_min_unknown_depth_m, info),
+        )
+        half_width_cells = self.metres_to_cells(
+            self.frontier_corridor_half_width_m,
+            info,
+        )
+
+        center_unknown = 0
+        corridor_unknown = 0
+        corridor_cells = set()
+        px = -uy
+        py = ux
+
+        for step in range(1, depth_cells + 1):
+            center_gx = int(round(frontier_gx + ux * step))
+            center_gy = int(round(frontier_gy + uy * step))
+
+            if not (0 <= center_gx < w and 0 <= center_gy < h):
+                return None
+
+            center_value = grid[center_gy, center_gx]
+            if self.is_occupied(center_value):
+                return None
+            if center_value == -1:
+                center_unknown += 1
+
+            for lateral in range(-half_width_cells, half_width_cells + 1):
+                gx = int(round(frontier_gx + ux * step + px * lateral))
+                gy = int(round(frontier_gy + uy * step + py * lateral))
+                if not (0 <= gx < w and 0 <= gy < h):
+                    continue
+                corridor_cells.add((gx, gy))
+
+        for gx, gy in corridor_cells:
+            value = grid[gy, gx]
+            if self.is_occupied(value):
+                return None
+            if value == -1:
+                corridor_unknown += 1
+
+        min_center_unknown = max(1, int(math.ceil(depth_cells * 0.5)))
+        if center_unknown < min_center_unknown:
+            return None
+
+        return corridor_unknown
+
     # ------------------------------------------------------------
     # Frontier extraction and scoring
     # ------------------------------------------------------------
@@ -588,33 +852,126 @@ class ExploreActionServer(Node):
         cy = ys.mean()
         return min(cluster, key=lambda p: (p[0] - cx) ** 2 + (p[1] - cy) ** 2)
 
-    def backoff_goal_from_frontier(self, grid, frontier_gx, frontier_gy, robot_gx, robot_gy):
-        if frontier_gx == robot_gx and frontier_gy == robot_gy:
-            if self.is_free(grid[frontier_gy, frontier_gx]):
-                return frontier_gx, frontier_gy
-            return None
-
-        dx = robot_gx - frontier_gx
-        dy = robot_gy - frontier_gy
-        norm = math.hypot(dx, dy)
-        if norm < 1e-6:
-            norm = 1.0
-
-        ux = dx / norm
-        uy = dy / norm
+    def count_cluster_unknown_neighbors(self, grid, cluster):
         h, w = grid.shape
+        unknown_cells = set()
 
-        for step in range(self.goal_backoff_cells, -1, -1):
-            gx = int(round(frontier_gx + ux * step))
-            gy = int(round(frontier_gy + uy * step))
+        for cx, cy in cluster:
+            for ny in range(cy - 1, cy + 2):
+                for nx in range(cx - 1, cx + 2):
+                    if not (0 <= nx < w and 0 <= ny < h):
+                        continue
+                    if grid[ny, nx] == -1:
+                        unknown_cells.add((nx, ny))
+
+        return len(unknown_cells)
+
+    def backoff_goal_from_frontier(
+        self,
+        grid,
+        frontier_gx,
+        frontier_gy,
+        unknown_ux,
+        unknown_uy,
+        safe_goal_mask,
+        reachable_distances,
+    ):
+        h, w = grid.shape
+        goal_ux = -unknown_ux
+        goal_uy = -unknown_uy
+
+        for step in range(self.goal_backoff_cells, self.max_goal_backoff_cells + 1):
+            gx = int(round(frontier_gx + goal_ux * step))
+            gy = int(round(frontier_gy + goal_uy * step))
 
             if not (0 <= gx < w and 0 <= gy < h):
                 continue
-            if not self.is_free(grid[gy, gx]):
+            if not safe_goal_mask[gy, gx]:
+                continue
+            if reachable_distances[gy, gx] < 0:
+                continue
+            if not self.has_free_line(grid, gx, gy, frontier_gx, frontier_gy):
+                continue
+            return gx, gy
+
+        for step in range(self.goal_backoff_cells - 1, -1, -1):
+            gx = int(round(frontier_gx + goal_ux * step))
+            gy = int(round(frontier_gy + goal_uy * step))
+
+            if not (0 <= gx < w and 0 <= gy < h):
+                continue
+            if not safe_goal_mask[gy, gx]:
+                continue
+            if reachable_distances[gy, gx] < 0:
+                continue
+            if not self.has_free_line(grid, gx, gy, frontier_gx, frontier_gy):
                 continue
             return gx, gy
 
         return None
+
+    def pick_cluster_traversal_goal(
+        self,
+        grid,
+        cluster,
+        info,
+        safe_goal_mask,
+        reachable_distances,
+    ):
+        best = None
+        best_score = None
+
+        for frontier_gx, frontier_gy in cluster:
+            normal = self.estimate_frontier_normal(grid, frontier_gx, frontier_gy)
+            if normal is None:
+                continue
+
+            unknown_ux, unknown_uy, normal_unknown_count, alignment = normal
+            open_unknown_count = self.frontier_unknown_is_open(
+                grid,
+                frontier_gx,
+                frontier_gy,
+                unknown_ux,
+                unknown_uy,
+                info,
+            )
+            if open_unknown_count is None:
+                continue
+
+            backed = self.backoff_goal_from_frontier(
+                grid,
+                frontier_gx,
+                frontier_gy,
+                unknown_ux,
+                unknown_uy,
+                safe_goal_mask,
+                reachable_distances,
+            )
+            if backed is None:
+                continue
+
+            goal_gx, goal_gy = backed
+            path_distance = reachable_distances[goal_gy, goal_gx]
+            traversal_score = (
+                open_unknown_count
+                + normal_unknown_count
+                + alignment * 4.0
+                - path_distance * 0.01
+            )
+
+            if best is None or traversal_score > best_score:
+                best = (
+                    goal_gx,
+                    goal_gy,
+                    frontier_gx,
+                    frontier_gy,
+                    unknown_ux,
+                    unknown_uy,
+                    open_unknown_count,
+                )
+                best_score = traversal_score
+
+        return best
 
     def count_unknown_around(self, grid, gx, gy):
         h, w = grid.shape
@@ -643,28 +1000,74 @@ class ExploreActionServer(Node):
 
         rx, ry = robot_xy
         robot_gx, robot_gy = self.world_to_grid(rx, ry, info)
+        h, w = grid.shape
+
+        if not (0 <= robot_gx < w and 0 <= robot_gy < h):
+            self.latest_frontier_candidate_count = 0
+            self.get_logger().warn(
+                'Robot pose is outside the occupancy grid: '
+                f'grid=({robot_gx}, {robot_gy}), map_size=({w}, {h})'
+            )
+            return None
+
+        clearance_cells = self.goal_clearance_cells(info)
+        safe_goal_mask = self.build_safe_goal_mask(grid, clearance_cells)
+        safe_start = self.find_nearest_safe_cell(
+            safe_goal_mask,
+            robot_gx,
+            robot_gy,
+            max(clearance_cells * 2, 1),
+        )
+
+        if safe_start is None:
+            self.latest_frontier_candidate_count = 0
+            self.get_logger().warn(
+                'No safe free-space cell found near the robot for frontier planning: '
+                f'clearance={self.min_goal_clearance_m:.2f}m '
+                f'({clearance_cells} cells)'
+            )
+            return None
+
+        if safe_start != (robot_gx, robot_gy):
+            self.get_logger().info(
+                'Using nearest safe planning start cell: '
+                f'robot=({robot_gx}, {robot_gy}), safe_start={safe_start}'
+            )
+
+        reachable_distances = self.compute_reachable_distances(
+            safe_goal_mask,
+            safe_start[0],
+            safe_start[1],
+        )
 
         best_goal = None
         best_score = None
         passed_count = 0
-        no_backoff_count = 0
+        no_safe_reachable_goal_count = 0
         blacklisted_count = 0
         too_close_count = 0
 
         for cluster in clusters:
-            frontier_gx, frontier_gy = self.pick_cluster_representative(cluster)
-            backed = self.backoff_goal_from_frontier(
+            traversal_goal = self.pick_cluster_traversal_goal(
                 grid,
-                frontier_gx,
-                frontier_gy,
-                robot_gx,
-                robot_gy,
+                cluster,
+                info,
+                safe_goal_mask,
+                reachable_distances,
             )
-            if backed is None:
-                no_backoff_count += 1
+            if traversal_goal is None:
+                no_safe_reachable_goal_count += 1
                 continue
 
-            goal_gx, goal_gy = backed
+            (
+                goal_gx,
+                goal_gy,
+                frontier_gx,
+                frontier_gy,
+                unknown_ux,
+                unknown_uy,
+                open_unknown_count,
+            ) = traversal_goal
             wx, wy = self.grid_to_world(goal_gx, goal_gy, info)
 
             if self.is_blacklisted(wx, wy):
@@ -677,16 +1080,20 @@ class ExploreActionServer(Node):
                 continue
 
             size = len(cluster)
-            unknown_count = self.count_unknown_around(grid, goal_gx, goal_gy)
+            unknown_count = (
+                self.count_cluster_unknown_neighbors(grid, cluster)
+                + open_unknown_count
+            )
+            path_dist = reachable_distances[goal_gy, goal_gx] * info.resolution
             score = (
-                self.distance_weight * dist
+                self.distance_weight * path_dist
                 - self.frontier_size_weight * size
                 - self.unknown_gain_weight * unknown_count
             )
 
             passed_count += 1
             if best_goal is None or score < best_score:
-                yaw = math.atan2(wy - ry, wx - rx)
+                yaw = math.atan2(unknown_uy, unknown_ux)
                 best_goal = (wx, wy, yaw, size, unknown_count)
                 best_score = score
 
@@ -696,11 +1103,16 @@ class ExploreActionServer(Node):
         if best_goal is None:
             self.get_logger().info(
                 'Clusters exist but all filtered out: '
-                f'no_backoff={no_backoff_count}, '
+                f'no_safe_reachable_goal={no_safe_reachable_goal_count}, '
                 f'blacklisted={blacklisted_count}, '
                 f'too_close={too_close_count}, '
                 f'min_goal_distance={self.min_goal_distance:.2f}, '
-                f'goal_backoff_cells={self.goal_backoff_cells}'
+                f'goal_backoff_cells={self.goal_backoff_cells}, '
+                f'max_goal_backoff_cells={self.max_goal_backoff_cells}, '
+                f'min_goal_clearance_m={self.min_goal_clearance_m:.2f}, '
+                f'frontier_min_unknown_depth_m='
+                f'{self.frontier_min_unknown_depth_m:.2f}, '
+                f'clearance_cells={clearance_cells}'
             )
             return None
 
@@ -800,7 +1212,13 @@ class ExploreActionServer(Node):
                 or self.finish_requested
                 or self.final_rotation_active
             ):
-                return
+                return False
+            if self.nav_goal_in_progress:
+                self.get_logger().info(
+                    'Skipping frontier goal dispatch because a NavigateToPose '
+                    'goal is already in flight'
+                )
+                return False
 
             self.nav_goal_in_progress = True
             self.current_goal_xy = (float(x), float(y))
@@ -816,8 +1234,21 @@ class ExploreActionServer(Node):
             f'x={x:.2f}, y={y:.2f}, size={size}, unknown_gain={unknown_count}'
         )
 
-        send_future = self.nav_client.send_goal_async(goal_msg)
+        try:
+            send_future = self.nav_client.send_goal_async(goal_msg)
+        except Exception as e:
+            self.get_logger().error(f'Failed to dispatch NavigateToPose goal: {e}')
+            with self.state_lock:
+                self.nav_goal_in_progress = False
+                self.current_nav_goal_handle = None
+                self.current_goal_xy = None
+                self.goals_failed += 1
+                if self.exploring_active and not self.final_rotation_active:
+                    self.current_state = self.STATE_PLANNING
+            return False
+
         send_future.add_done_callback(self.nav_goal_response_callback)
+        return True
 
     def nav_goal_response_callback(self, future):
         try:
@@ -943,55 +1374,84 @@ class ExploreActionServer(Node):
         with self.state_lock:
             active = self.exploring_active
             finish_requested = self.finish_requested
-            nav_goal_in_progress = self.nav_goal_in_progress
+            nav_goal_in_progress = (
+                self.nav_goal_in_progress
+                or self.current_nav_goal_handle is not None
+                or self.current_goal_xy is not None
+            )
+            frontier_plan_in_progress = self.frontier_plan_in_progress
             final_rotation_active = self.final_rotation_active
 
         if not active or finish_requested or final_rotation_active:
             return
 
-        self.cleanup_blacklist()
-
-        if self.map_msg is None:
-            self.set_state(self.STATE_WAITING_FOR_MAP)
-            return
-
-        if nav_goal_in_progress:
-            return
-
-        nav2_not_ready_reason = self.get_nav2_not_ready_reason()
-        if nav2_not_ready_reason is not None:
-            self.set_state(self.STATE_WAITING_FOR_NAV2)
-            self.log_nav2_not_ready(nav2_not_ready_reason)
-            return
-
-        robot_xy = self.get_robot_xy()
-        if robot_xy is None:
-            self.set_state(self.STATE_WAITING_FOR_TF)
+        if nav_goal_in_progress or frontier_plan_in_progress:
             return
 
         with self.state_lock:
-            self.latest_robot_xy = robot_xy
-            self.current_state = self.STATE_PLANNING
+            if (
+                not self.exploring_active
+                or self.finish_requested
+                or self.final_rotation_active
+                or self.nav_goal_in_progress
+                or self.current_nav_goal_handle is not None
+                or self.current_goal_xy is not None
+                or self.frontier_plan_in_progress
+            ):
+                return
+            self.frontier_plan_in_progress = True
 
-        self.get_logger().info(f'Robot pose in map: x={robot_xy[0]:.2f}, y={robot_xy[1]:.2f}')
+        try:
+            self.cleanup_blacklist()
 
-        goal = self.pick_frontier_goal(robot_xy)
-        if goal is None:
+            if self.map_msg is None:
+                self.set_state(self.STATE_WAITING_FOR_MAP)
+                return
+
+            nav2_not_ready_reason = self.get_nav2_not_ready_reason()
+            if nav2_not_ready_reason is not None:
+                self.set_state(self.STATE_WAITING_FOR_NAV2)
+                self.log_nav2_not_ready(nav2_not_ready_reason)
+                return
+
+            robot_xy = self.get_robot_xy()
+            if robot_xy is None:
+                self.set_state(self.STATE_WAITING_FOR_TF)
+                return
+
             with self.state_lock:
-                self.no_frontier_count += 1
-                count = self.no_frontier_count
-                self.current_state = self.STATE_NO_FRONTIER
+                self.latest_robot_xy = robot_xy
+                self.current_state = self.STATE_PLANNING
 
-            if self.finish_when_no_frontiers and count >= self.no_frontier_finish_count:
-                self.request_finish(True, 'No reachable frontier left')
-            return
+            self.get_logger().info(
+                f'Robot pose in map: x={robot_xy[0]:.2f}, y={robot_xy[1]:.2f}'
+            )
 
-        with self.state_lock:
-            self.no_frontier_count = 0
+            goal = self.pick_frontier_goal(robot_xy)
+            if goal is None:
+                with self.state_lock:
+                    self.no_frontier_count += 1
+                    count = self.no_frontier_count
+                    self.current_state = self.STATE_NO_FRONTIER
 
-        gx, gy, yaw, size, unknown_count = goal
-        self.get_logger().info(f'Chosen frontier size={size}, unknown_gain={unknown_count}')
-        self.send_nav_goal(gx, gy, yaw, size, unknown_count)
+                if (
+                    self.finish_when_no_frontiers
+                    and count >= self.no_frontier_finish_count
+                ):
+                    self.request_finish(True, 'No reachable frontier left')
+                return
+
+            with self.state_lock:
+                self.no_frontier_count = 0
+
+            gx, gy, yaw, size, unknown_count = goal
+            self.get_logger().info(
+                f'Chosen frontier size={size}, unknown_gain={unknown_count}'
+            )
+            self.send_nav_goal(gx, gy, yaw, size, unknown_count)
+        finally:
+            with self.state_lock:
+                self.frontier_plan_in_progress = False
 
 
 def main(args=None):
