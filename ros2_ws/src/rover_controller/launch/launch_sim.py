@@ -101,7 +101,7 @@ def generate_launch_description():
     )
     startup_observation_duration_arg = DeclareLaunchArgument(
         "startup_observation_duration_sec",
-        default_value="6.5",
+        default_value="15.0",
         description="Startup camera sweep duration in simulated seconds.",
     )
     startup_observation_angular_z_arg = DeclareLaunchArgument(
