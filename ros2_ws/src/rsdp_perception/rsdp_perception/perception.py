@@ -387,6 +387,7 @@ class PerceptionStableAttrsNode(Node):
         )
 
         self.declare_parameter("crop_pad_frac", 0.08)
+        self.declare_parameter("process_every_n_frames", 1)
         self.declare_parameter("publish_every_n_frames", 1)
 
         weights = self.get_parameter("weights").value
@@ -410,6 +411,9 @@ class PerceptionStableAttrsNode(Node):
         self.min_votes = int(self.get_parameter("min_votes_to_output").value)
         self.min_attr_conf = float(self.get_parameter("min_attr_conf").value)
 
+        self.process_every = max(
+            1, int(self.get_parameter("process_every_n_frames").value)
+        )
         self.publish_every = int(self.get_parameter("publish_every_n_frames").value)
 
         self.color_topic = self.get_parameter("color_topic").value
@@ -480,7 +484,10 @@ class PerceptionStableAttrsNode(Node):
         self.ts.registerCallback(self.cb)
 
         self.frame_count = 0
-        self.get_logger().info("Stable+Attrs perception node started.")
+        self.get_logger().info(
+            "Stable+Attrs perception node started. "
+            f"process_every_n_frames={self.process_every}"
+        )
 
     def _class_name(self, cls_id: int) -> str:
         if isinstance(self.names, dict):
@@ -503,6 +510,9 @@ class PerceptionStableAttrsNode(Node):
             self.get_logger().info(
                 f"Intrinsics fx={self.fx:.2f} fy={self.fy:.2f} cx={self.cx:.2f} cy={self.cy:.2f}"
             )
+
+        if ((self.frame_count - 1) % self.process_every) != 0:
+            return
 
         try:
             color = image_msg_to_numpy(color_msg)

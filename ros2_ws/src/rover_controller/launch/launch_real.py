@@ -17,6 +17,7 @@ def generate_launch_description():
     run_smooth_observations = LaunchConfiguration("run_smooth_observations")
     run_rover_controller = LaunchConfiguration("run_rover_controller")
     run_arm_joint_state_fallback = LaunchConfiguration("run_arm_joint_state_fallback")
+    vision_process_every_n_frames = LaunchConfiguration("vision_process_every_n_frames")
     startup_observation_duration_sec = LaunchConfiguration(
         "startup_observation_duration_sec"
     )
@@ -37,6 +38,14 @@ def generate_launch_description():
         default_value="false",
         description=(
             "Publish fallback arm joint states when the real arm stack is not running."
+        ),
+    )
+    vision_process_every_n_frames_arg = DeclareLaunchArgument(
+        "vision_process_every_n_frames",
+        default_value="1",
+        description=(
+            "Run YOLO once every N synchronized camera frames. "
+            "Increase this to reduce vision CPU/GPU load."
         ),
     )
     startup_observation_duration_arg = DeclareLaunchArgument(
@@ -61,7 +70,10 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_perception, "launch", "vision.launch.py")
         ),
-        launch_arguments={"run_realsense_node": "true"}.items(),
+        launch_arguments={
+            "run_realsense_node": "true",
+            "process_every_n_frames": vision_process_every_n_frames,
+        }.items(),
     )
 
     slam_launch = IncludeLaunchDescription(
@@ -108,6 +120,7 @@ def generate_launch_description():
             run_smooth_observations_arg,
             run_rover_controller_arg,
             run_arm_joint_state_fallback_arg,
+            vision_process_every_n_frames_arg,
             startup_observation_duration_arg,
             startup_observation_angular_z_arg,
             robot_description_launch,

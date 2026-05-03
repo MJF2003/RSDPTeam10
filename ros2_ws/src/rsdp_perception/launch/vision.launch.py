@@ -22,6 +22,7 @@ def generate_launch_description():
     min_attr_conf = LaunchConfiguration("min_attr_conf")
     vote_window = LaunchConfiguration("vote_window")
     min_votes_to_output = LaunchConfiguration("min_votes_to_output")
+    process_every_n_frames = LaunchConfiguration("process_every_n_frames")
     color_topic = LaunchConfiguration("color_topic")
     depth_topic = LaunchConfiguration("depth_topic")
     info_topic = LaunchConfiguration("info_topic")
@@ -35,6 +36,7 @@ def generate_launch_description():
             DeclareLaunchArgument("min_attr_conf", default_value="0.20"),
             DeclareLaunchArgument("vote_window", default_value="10"),
             DeclareLaunchArgument("min_votes_to_output", default_value="5"),
+            DeclareLaunchArgument("process_every_n_frames", default_value="1"),
             DeclareLaunchArgument(
                 "color_topic", default_value="/camera/camera/color/image_raw"
             ),
@@ -64,6 +66,7 @@ def generate_launch_description():
                         "min_attr_conf": min_attr_conf,
                         "vote_window": vote_window,
                         "min_votes_to_output": min_votes_to_output,
+                        "process_every_n_frames": process_every_n_frames,
                         "color_topic": color_topic,
                         "depth_topic": depth_topic,
                         "info_topic": info_topic,
