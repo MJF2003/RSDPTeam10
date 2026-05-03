@@ -73,13 +73,12 @@ DONE: ~Controller needs to update the costmap with block/bin positions~
 # NEXT STEPS
 DONE: ~Set up wireless ssh from laptop~
 DONE: ~Check where the lidar transform is actually coming from~ - it's hardcoded. I updated to the latest values.
-TODO: E-Stop from rover_controller 
-    - In progress - codexy shit has begun to happen. Need to test on laptop tomorrow. Should be able to start and stop happily.
-    - Current will use services. Can we add something to the controller launch will boot up a little guy waiting for user input?
-TODO: rover_controller wait for input (as well as waiting, it should print whether all the expected servers are healthy) 
-TODO: Reduce angular velocity of rotation moves (hardcode - half angular velocity for 2x the time)
+TODO: ~E-Stop from rover_controller~ 
+TODO: ~rover_controller wait for input (as well as waiting, it should print whether all the expected servers are healthy)~ 
+TODO: Reduce angular velocity of rotation moves (hardcode - half angular velocity for 2x the time) - kinda done
 TODO: Fix build errors for manipulation node 
 TODO: Chunyi code:
   - Convert to action server 
   - Test with smoothed nodes
 TODO: Throttle realsense/YOLO option? Needs to be a fast tweak we can make in the launch or something
+When I get limit back, need to try IMU + Odom in cartographer. - at like midnight
