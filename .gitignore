@@ -9,7 +9,22 @@ __pycache__/
 *.pyc
 
 *.pt
-ros2_ws/src/mycobot_ros2
+ros2_ws/src/mycobot_ros2/*
+!ros2_ws/src/mycobot_ros2/
+!ros2_ws/src/mycobot_ros2/mycobot_280/
+ros2_ws/src/mycobot_ros2/mycobot_280/*
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/
+ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/*
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/
+ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/*
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/firefighter.ros2_control.xacro
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/initial_positions.yaml
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/joint_limits.yaml
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/moveit_controllers.yaml
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/ros2_controllers.yaml
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/launch/
+ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/launch/*
+!ros2_ws/src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/launch/demo.launch.py
 ros2_ws/src/warehouse_ros_mongo
 
 .codex

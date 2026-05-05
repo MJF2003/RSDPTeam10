@@ -77,10 +77,14 @@ DONE: ~E-Stop from rover_controller~
 DONE: ~rover_controller wait for input (as well as waiting, it should print whether all the expected servers are healthy)~ 
 DONE: ~Reduce angular velocity of rotation moves (hardcode - half angular velocity for 2x the time) - kinda done~
 DONE: ~Throttle realsense/YOLO option? Needs to be a fast tweak we can make in the launch or something~
-TODO: nav_debug_overlay in real launch
+DONE: ~nav_debug_overlay in real launch~
 
 TODO: Fix build errors for manipulation node 
 TODO: Chunyi code:
-  - Convert to action server 
-  - Test with smoothed nodes
+    - Networking - how will the arm communicate with the NUC? He's just using a file called tcp_bridge.py - but it will need to play nicely with the FAST_DDS server being used by the NUC, Pi and laptop
+    - Is there config information in the current stuff that's getting used?
+    - His code is just getting run with python3 - does that work?
+    - 
+Time split on Weds: 15m for networking. 1h for vision integration + exploration. Arm with any leftover time.
+
 TODO: try IMU + Odom in Cartographer
