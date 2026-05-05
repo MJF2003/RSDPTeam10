@@ -17,6 +17,7 @@ def generate_launch_description():
     run_smooth_observations = LaunchConfiguration("run_smooth_observations")
     run_rover_controller = LaunchConfiguration("run_rover_controller")
     run_arm_joint_state_fallback = LaunchConfiguration("run_arm_joint_state_fallback")
+    run_nav_debug_overlay = LaunchConfiguration("run_nav_debug_overlay")
     vision_process_every_n_frames = LaunchConfiguration("vision_process_every_n_frames")
     startup_observation_duration_sec = LaunchConfiguration(
         "startup_observation_duration_sec"
@@ -39,6 +40,11 @@ def generate_launch_description():
         description=(
             "Publish fallback arm joint states when the real arm stack is not running."
         ),
+    )
+    run_nav_debug_overlay_arg = DeclareLaunchArgument(
+        "run_nav_debug_overlay",
+        default_value="true",
+        description="Run rover_sim_stubs nav_debug_overlay node.",
     )
     vision_process_every_n_frames_arg = DeclareLaunchArgument(
         "vision_process_every_n_frames",
@@ -115,11 +121,20 @@ def generate_launch_description():
         condition=IfCondition(run_arm_joint_state_fallback),
     )
 
+    nav_debug_overlay = Node(
+        package="rover_sim_stubs",
+        executable="nav_debug_overlay",
+        output="screen",
+        parameters=[{"marker_frame": "map"}],
+        condition=IfCondition(run_nav_debug_overlay),
+    )
+
     return LaunchDescription(
         [
             run_smooth_observations_arg,
             run_rover_controller_arg,
             run_arm_joint_state_fallback_arg,
+            run_nav_debug_overlay_arg,
             vision_process_every_n_frames_arg,
             startup_observation_duration_arg,
             startup_observation_angular_z_arg,
@@ -129,5 +144,6 @@ def generate_launch_description():
             smooth_observations,
             rover_controller,
             arm_joint_state_fallback,
+            nav_debug_overlay,
         ]
     )
