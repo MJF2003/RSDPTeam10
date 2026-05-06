@@ -261,6 +261,14 @@ class ControllerNode(Node):
         self.manip_goal_operation: int | None = None
         self.manip_goal_handle = None
         self.manip_cancel_in_flight = False
+        self.manipulation_max_attempts = int(
+            self.declare_parameter("manipulation_max_attempts", 5).value
+        )
+        self.manipulation_failure_counts: dict[int, int] = {
+            ManipulateBlock.Goal.GRASP: 0,
+            ManipulateBlock.Goal.DEPOSIT: 0,
+        }
+        self.manipulation_retry_target_block_id: int | None = None
         self.required_startup_action_clients = (
             (action_topic, self.nav_action_client),
             (manip_action_topic, self.manip_action_client),
@@ -600,7 +608,7 @@ class ControllerNode(Node):
                 self.get_logger().info(
                     f"Targeting {color_to_str(block.color)} block, ignoring collected blocks {self.collected=}"
                 )
-                self.target_block = block
+                self.set_target_block(block)
                 if self.state == Phase.Explore.EXPLORE:
                     self.cancel_exploration_goal()
 
@@ -711,6 +719,44 @@ class ControllerNode(Node):
         point_copy.point.y = point.point.y
         point_copy.point.z = point.point.z
         return point_copy
+
+    def set_target_block(self, target_block: BlockPoseSmoothed | None):
+        previous_id = self._target_block_id(self.target_block)
+        next_id = self._target_block_id(target_block)
+        self.target_block = target_block
+        if previous_id != next_id:
+            self.reset_manipulation_failure_counts(next_id)
+
+    @staticmethod
+    def _target_block_id(target_block: BlockPoseSmoothed | None) -> int | None:
+        if target_block is None:
+            return None
+        return int(target_block.id)
+
+    def reset_manipulation_failure_counts(self, target_block_id: int | None):
+        self.manipulation_failure_counts = {
+            ManipulateBlock.Goal.GRASP: 0,
+            ManipulateBlock.Goal.DEPOSIT: 0,
+        }
+        self.manipulation_retry_target_block_id = target_block_id
+
+    def _sync_manipulation_retry_target(self):
+        target_block_id = self._target_block_id(self.target_block)
+        if self.manipulation_retry_target_block_id != target_block_id:
+            self.reset_manipulation_failure_counts(target_block_id)
+
+    def _record_manipulation_failure(self, operation: int) -> int:
+        self._sync_manipulation_retry_target()
+        current_count = self.manipulation_failure_counts.get(operation, 0)
+        next_count = current_count + 1
+        self.manipulation_failure_counts[operation] = next_count
+        return next_count
+
+    def _manipulation_attempts_exhausted(self, operation: int) -> bool:
+        return (
+            self.manipulation_failure_counts.get(operation, 0)
+            >= self.manipulation_max_attempts
+        )
 
     # ------------------------ NAVIGATION -----------------------------------------
     def navigate_to_pose(
@@ -1029,42 +1075,48 @@ class ControllerNode(Node):
 
         if operation == ManipulateBlock.Goal.GRASP:
             if success:
-                if self.target_block is None:
-                    self.get_logger().warn(
-                        "Grasp reported success but there is no target block."
-                    )
-                    self.state = Phase.Explore.EXPLORE
-                    return
+                self._handle_grasp_success()
+                return
 
-                self.collected.add(self.target_block.id)
-                self.fixed_keepout_positions[self.target_block.id] = (
-                    self._copy_point_stamped(self.target_block.position)
+            failure_count = self._record_manipulation_failure(operation)
+            if self._manipulation_attempts_exhausted(operation):
+                self.get_logger().warning(
+                    "Grasp failed with message "
+                    f"'{message}'. Retry budget exhausted after "
+                    f"{failure_count}/{self.manipulation_max_attempts} attempts; "
+                    "treating grasp as successful."
                 )
-                self.get_logger().info(f"Adding target block to {self.collected=}")
-                self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
+                self._handle_grasp_success()
                 return
 
             self.get_logger().warning(
-                f"Grasp failed with message '{message}'. Re-approaching block."
+                f"Grasp failed with message '{message}' "
+                f"({failure_count}/{self.manipulation_max_attempts}). "
+                "Re-approaching block."
             )
             self.state = Phase.ApproachBlock.EXECUTE_NAV
             return
 
         if operation == ManipulateBlock.Goal.DEPOSIT:
             if success:
-                self.target_block = None
-                self.target_bin = None
+                self._handle_deposit_success()
+                return
 
-                # if we have successfully collected 3 blocks, terminate the mission,
-                # or return to the exploration phase to find more
-                if len(self.collected) < 3:
-                    self.state = Phase.Explore.EXPLORE
-                else:
-                    self.state = Phase.PostDeposit.TERMINATE
+            failure_count = self._record_manipulation_failure(operation)
+            if self._manipulation_attempts_exhausted(operation):
+                self.get_logger().warning(
+                    "Deposit failed with message "
+                    f"'{message}'. Retry budget exhausted after "
+                    f"{failure_count}/{self.manipulation_max_attempts} attempts; "
+                    "treating deposit as successful."
+                )
+                self._handle_deposit_success()
                 return
 
             self.get_logger().warning(
-                f"Deposit failed with message '{message}'. Re-approaching bin."
+                f"Deposit failed with message '{message}' "
+                f"({failure_count}/{self.manipulation_max_attempts}). "
+                "Re-approaching bin."
             )
             self.state = Phase.ApproachBin.EXECUTE_NAV
             return
@@ -1074,6 +1126,32 @@ class ControllerNode(Node):
             f"returning to explore."
         )
         self.state = Phase.Explore.EXPLORE
+
+    def _handle_grasp_success(self):
+        if self.target_block is None:
+            self.get_logger().warn("Grasp reported success but there is no target block.")
+            self.state = Phase.Explore.EXPLORE
+            return
+
+        self.manipulation_failure_counts[ManipulateBlock.Goal.GRASP] = 0
+        self.collected.add(self.target_block.id)
+        self.fixed_keepout_positions[self.target_block.id] = (
+            self._copy_point_stamped(self.target_block.position)
+        )
+        self.get_logger().info(f"Adding target block to {self.collected=}")
+        self.state = Phase.ApproachBin.PROPOSE_NAV_POSE
+
+    def _handle_deposit_success(self):
+        self.manipulation_failure_counts[ManipulateBlock.Goal.DEPOSIT] = 0
+        self.set_target_block(None)
+        self.target_bin = None
+
+        # if we have successfully collected 3 blocks, terminate the mission,
+        # or return to the exploration phase to find more
+        if len(self.collected) < 3:
+            self.state = Phase.Explore.EXPLORE
+        else:
+            self.state = Phase.PostDeposit.TERMINATE
 
 
 def main():
