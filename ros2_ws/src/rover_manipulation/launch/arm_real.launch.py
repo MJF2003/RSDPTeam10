@@ -16,6 +16,7 @@ def generate_launch_description():
     pi_host = LaunchConfiguration("pi_host")
     pi_port = LaunchConfiguration("pi_port")
     run_moveit_demo = LaunchConfiguration("run_moveit_demo")
+    use_rviz = LaunchConfiguration("use_rviz")
     run_tcp_bridge = LaunchConfiguration("run_tcp_bridge")
     run_auto_pick = LaunchConfiguration("run_auto_pick")
 
@@ -34,6 +35,11 @@ def generate_launch_description():
         default_value="true",
         description="Run mycobot_280_moveit2 demo launch.",
     )
+    use_rviz_arg = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="false",
+        description="Launch RViz as part of the MoveIt demo.",
+    )
     run_tcp_bridge_arg = DeclareLaunchArgument(
         "run_tcp_bridge",
         default_value="true",
@@ -49,6 +55,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_mycobot_moveit, "launch", "demo.launch.py")
         ),
+        launch_arguments={"use_rviz": use_rviz}.items(),
         condition=IfCondition(run_moveit_demo),
     )
 
@@ -79,6 +86,7 @@ def generate_launch_description():
             pi_host_arg,
             pi_port_arg,
             run_moveit_demo_arg,
+            use_rviz_arg,
             run_tcp_bridge_arg,
             run_auto_pick_arg,
             moveit_demo_launch,
