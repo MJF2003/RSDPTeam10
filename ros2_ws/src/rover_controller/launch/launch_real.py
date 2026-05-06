@@ -11,9 +11,11 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_bringup = get_package_share_directory("rover_gz_bringup")
+    pkg_manipulation = get_package_share_directory("rover_manipulation")
     pkg_perception = get_package_share_directory("rsdp_perception")
     pkg_slam = get_package_share_directory("rover_slam")
 
+    run_rover_manipulation = LaunchConfiguration("run_rover_manipulation")
     run_smooth_observations = LaunchConfiguration("run_smooth_observations")
     run_rover_controller = LaunchConfiguration("run_rover_controller")
     run_arm_joint_state_fallback = LaunchConfiguration("run_arm_joint_state_fallback")
@@ -24,6 +26,11 @@ def generate_launch_description():
     )
     startup_observation_angular_z = LaunchConfiguration("startup_observation_angular_z")
 
+    run_rover_manipulation_arg = DeclareLaunchArgument(
+        "run_rover_manipulation",
+        default_value="true",
+        description="Run rover_manipulation arm_real.launch.py.",
+    )
     run_smooth_observations_arg = DeclareLaunchArgument(
         "run_smooth_observations",
         default_value="true",
@@ -70,6 +77,13 @@ def generate_launch_description():
             os.path.join(pkg_bringup, "launch", "publish_description.py")
         ),
         launch_arguments={"robot_ns": ""}.items(),
+    )
+
+    rover_manipulation_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_manipulation, "launch", "arm_real.launch.py")
+        ),
+        condition=IfCondition(run_rover_manipulation),
     )
 
     vision_launch = IncludeLaunchDescription(
@@ -131,6 +145,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            run_rover_manipulation_arg,
             run_smooth_observations_arg,
             run_rover_controller_arg,
             run_arm_joint_state_fallback_arg,
@@ -139,6 +154,7 @@ def generate_launch_description():
             startup_observation_duration_arg,
             startup_observation_angular_z_arg,
             robot_description_launch,
+            rover_manipulation_launch,
             vision_launch,
             slam_launch,
             smooth_observations,
