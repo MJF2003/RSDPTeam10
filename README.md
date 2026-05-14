@@ -19,6 +19,9 @@ This repo follows standard software development best practice. All commits shoul
 ## Distance with obstacle
 ![repo structure](imgs/distance-with-obstacle.gif)
 
+## Grasping
+![repo structure](imgs/V4_Promotional_00-49_to_00-55.gif)
+
 ## Repo Structure
 A diagram indicating the planned software architecture is shown below. Each blue node below corresponds to a separate ROS2 package which will run during the robot's mission.
 
