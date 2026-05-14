@@ -11,7 +11,16 @@ This repo follows standard software development best practice. All commits shoul
 ![repo structure](imgs/PXL_20260506_165134424.jpg)
 
 ## Leo Rover
-![repo structure](imgs/daf2ee542dc4e0b75d68470d5b03514b.jpg)
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="imgs/daf2ee542dc4e0b75d68470d5b03514b.jpg" alt="repo structure" width="100%">
+    </td>
+    <td width="50%" align="center">
+      <img src="imgs/NewAsmAnimation_under20mb.gif" alt="NewAsmAnimation" width="100%">
+    </td>
+  </tr>
+</table>
 
 ## Exploration
 ![repo structure](imgs/exploration.gif)
