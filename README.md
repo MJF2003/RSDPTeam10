@@ -10,6 +10,15 @@ This repo follows standard software development best practice. All commits shoul
 ## Leo Rover
 ![repo structure](imgs/daf2ee542dc4e0b75d68470d5b03514b.jpg)
 
+## Exploration
+![repo structure](imgs/8b39d07b08b83035946226cf63335c56_raw.mp4)
+
+## Avoid collisions
+![repo structure](imgs/avoid-collisions.mp4)
+
+## Distance with obstacle
+![repo structure](imgs/distance-with-obstacle.mp4)
+
 ## Repo Structure
 A diagram indicating the planned software architecture is shown below. Each blue node below corresponds to a separate ROS2 package which will run during the robot's mission.
 
