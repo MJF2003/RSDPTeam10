@@ -7,6 +7,9 @@ This repository contains ROS2 code used in the RSDP Leo Rover project. This code
 ## Contributing
 This repo follows standard software development best practice. All commits should be made on branches, and merged into `main` via pull requests. For more details on using Git, see the internal team [Guide to Git](https://livemanchesterac-my.sharepoint.com/:w:/g/personal/alexander_inch_postgrad_manchester_ac_uk/IQBNWKkrWXlWRrZvdg0988FWATn3JgwjHPRF73FxCxYHUuE?e=fSUf5N). The intention is that the `main` branch remains clean; this is where the code run on the main Rover will be contained, so it is paramount that it stays relatively clean.
 
+## Our team
+![repo structure](imgs/PXL_20260506_165134424.jpg)
+
 ## Leo Rover
 ![repo structure](imgs/daf2ee542dc4e0b75d68470d5b03514b.jpg)
 
